@@ -147,7 +147,7 @@ class NetaudioError(Exception):
 class NetaudioClient:
     def __init__(self, netaudio_bin: str, discovery_timeout: float,
                  relay_host: str = "127.0.0.1", relay_port: int = 9000,
-                 restart_on_change: bool = True):
+                 restart_on_change: bool = False):
         self.netaudio_bin = netaudio_bin
         self.discovery_timeout = discovery_timeout
         self.relay_host = relay_host

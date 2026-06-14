@@ -19,9 +19,10 @@ class Settings:
     # netaudio daemon relay (used to force a cache refresh after changes)
     relay_host: str = "127.0.0.1"
     relay_port: int = 9000
-    # Restart the daemon after each change (reliable but ~seconds per action).
-    # Set NETAUDIO_GUI_RESTART_ON_CHANGE=0 to use the lighter relay refresh.
-    restart_on_change: bool = True
+    # Use the lighter relay refresh after each change. Set
+    # NETAUDIO_GUI_RESTART_ON_CHANGE=1 to force a full daemon restart instead
+    # (more reliable but costs ~seconds per action).
+    restart_on_change: bool = False
 
 
 def load_settings() -> Settings:
@@ -35,5 +36,5 @@ def load_settings() -> Settings:
         discovery_timeout=float(os.environ.get("NETAUDIO_GUI_TIMEOUT", "2.0")),
         relay_host=os.environ.get("NETAUDIO_RELAY_HOST", "127.0.0.1"),
         relay_port=int(os.environ.get("NETAUDIO_RELAY_PORT", "9000")),
-        restart_on_change=_truthy(os.environ.get("NETAUDIO_GUI_RESTART_ON_CHANGE", "1")),
+        restart_on_change=_truthy(os.environ.get("NETAUDIO_GUI_RESTART_ON_CHANGE", "0")),
     )

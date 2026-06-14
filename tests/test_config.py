@@ -16,12 +16,12 @@ def test_defaults(monkeypatch):
     assert s.discovery_timeout == 2.0
     assert s.relay_host == "127.0.0.1"
     assert s.relay_port == 9000
-    assert s.restart_on_change is True
+    assert s.restart_on_change is False
 
 
-def test_restart_on_change_can_be_disabled(monkeypatch):
-    monkeypatch.setenv("NETAUDIO_GUI_RESTART_ON_CHANGE", "0")
-    assert load_settings().restart_on_change is False
+def test_restart_on_change_can_be_enabled(monkeypatch):
+    monkeypatch.setenv("NETAUDIO_GUI_RESTART_ON_CHANGE", "1")
+    assert load_settings().restart_on_change is True
 
 
 def test_overrides(monkeypatch):

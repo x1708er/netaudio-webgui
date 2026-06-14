@@ -70,7 +70,7 @@ def create_app(settings: Settings | None = None, client=None) -> FastAPI:
 
     @app.post("/api/rescan", dependencies=auth)
     def api_rescan():
-        # Force a full refresh (daemon restart by default) for changes made
+        # Force a full refresh (relay rescan by default) for changes made
         # outside this GUI (Dante Controller, channel-count edits, device restarts).
         client.force_refresh()
         return {"ok": True}
