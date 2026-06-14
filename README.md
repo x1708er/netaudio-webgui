@@ -2,6 +2,8 @@
 
 Browser-based Dante routing matrix + device management on top of the `netaudio` CLI.
 
+![netaudio Web-GUI — Dante routing matrix with device panel](docs/screenshot.png)
+
 ## Run
 
     ~/bin/inferno-gui            # starts the netaudio daemon + serves on 0.0.0.0:36342
