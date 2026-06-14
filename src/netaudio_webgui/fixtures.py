@@ -2,12 +2,19 @@ from __future__ import annotations
 
 import copy
 
-from netaudio_webgui.netaudio_client import NetaudioError
+from netaudio_webgui.netaudio_client import (
+    ENCODINGS,
+    GAIN_LEVELS,
+    SAMPLE_RATES,
+    NetaudioError,
+)
 
 _DEMO_DEVICES = [
     {
         "name": "Inferno", "ipv4": "192.168.178.51", "server_name": "Inferno-demo",
-        "online": True, "model": "Inferno (virtual)", "sample_rate": 48000, "clock_role": "leader",
+        "online": True, "model": "Inferno (virtual)", "sample_rate": 48000,
+        "encoding": 24, "latency": 1.0, "aes67": False, "preferred_leader": True,
+        "clock_role": "leader",
         "tx_channels": [{"number": 1, "name": "L", "label": "L"},
                         {"number": 2, "name": "R", "label": "R"}],
         "rx_channels": [{"number": 1, "name": "01", "label": "01"},
@@ -15,8 +22,10 @@ _DEMO_DEVICES = [
     },
     {
         "name": "A32", "ipv4": "192.168.178.50", "server_name": "A32-demo",
-        "online": True, "model": "AVIO A32", "sample_rate": 48000, "clock_role": "follower",
-        "tx_channels": [{"number": 1, "name": "Mic1", "label": "Mic1"}],
+        "online": True, "model": "AVIO A32", "sample_rate": 48000,
+        "encoding": 24, "latency": 1.0, "aes67": False, "preferred_leader": False,
+        "clock_role": "follower",
+        "tx_channels": [{"number": 1, "name": "Mic1", "label": "Mic1", "gain": 3}],
         "rx_channels": [{"number": 1, "name": "01", "label": "01"},
                         {"number": 2, "name": "02", "label": "02"}],
     },
@@ -136,3 +145,53 @@ class DemoClient:
 
     def reboot(self, host: str) -> None:
         self._find_device_by_host(host)
+
+    def set_sample_rate(self, host: str, rate) -> None:
+        try:
+            rate = int(rate)
+        except (TypeError, ValueError):
+            raise ValueError(f"invalid sample rate: {rate!r}")
+        if rate not in SAMPLE_RATES:
+            raise ValueError(f"invalid sample rate: {rate}")
+        self._find_device_by_host(host)["sample_rate"] = rate
+
+    def set_encoding(self, host: str, bits) -> None:
+        try:
+            bits = int(bits)
+        except (TypeError, ValueError):
+            raise ValueError(f"invalid encoding: {bits!r}")
+        if bits not in ENCODINGS:
+            raise ValueError(f"invalid encoding: {bits}")
+        self._find_device_by_host(host)["encoding"] = bits
+
+    def set_latency(self, host: str, value) -> None:
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"invalid latency: {value!r}")
+        if value <= 0:
+            raise ValueError(f"invalid latency: {value}")
+        self._find_device_by_host(host)["latency"] = value
+
+    def set_aes67(self, host: str, enabled: bool) -> None:
+        self._find_device_by_host(host)["aes67"] = bool(enabled)
+
+    def set_preferred_leader(self, host: str, enabled: bool) -> None:
+        self._find_device_by_host(host)["preferred_leader"] = bool(enabled)
+
+    def set_channel_gain(self, host: str, number: int, level, channel_type: str) -> None:
+        if channel_type not in ("tx", "rx"):
+            raise ValueError(f"invalid channel type: {channel_type!r}")
+        try:
+            level = int(level)
+        except (TypeError, ValueError):
+            raise ValueError(f"invalid gain level: {level!r}")
+        if level not in GAIN_LEVELS:
+            raise ValueError(f"invalid gain level: {level}")
+        device = self._find_device_by_host(host)
+        kind = "tx_channels" if channel_type == "tx" else "rx_channels"
+        for channel in device[kind]:
+            if channel["number"] == number:
+                channel["gain"] = level
+                return
+        raise NetaudioError(f"channel {number} not found")

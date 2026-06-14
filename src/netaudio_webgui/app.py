@@ -43,6 +43,29 @@ class ChannelNameBody(BaseModel):
     type: str  # "tx" | "rx"
 
 
+class ConfigValueBody(BaseModel):
+    # bool before int/float so JSON true/false isn't coerced to 1/0; float covers
+    # the latency value (positive number), str covers aes67/preferred-leader "on"/"off".
+    value: bool | int | float | str
+
+
+class ChannelGainBody(BaseModel):
+    level: int
+    type: str  # "tx" | "rx"
+
+
+def _coerce_bool(value) -> bool:
+    """Accept a real bool or the strings on/off/true/false (any case)."""
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {"on", "true", "1", "yes"}:
+        return True
+    if text in {"off", "false", "0", "no"}:
+        return False
+    raise ValueError(f"invalid boolean: {value!r}")
+
+
 def plan_apply(desired: list[dict], state: dict) -> tuple[list[dict], list[dict], int]:
     """Compute the diff to make the live routing EXACTLY match ``desired``.
 
@@ -174,6 +197,34 @@ def create_app(settings: Settings | None = None, client=None, store=None) -> Fas
     @app.put("/api/device/{host}/channel/{number}/name", dependencies=auth)
     def api_channel_name(host: str, number: int, body: ChannelNameBody):
         client.set_channel_name(host, number, body.name, body.type)
+        return {"ok": True}
+
+    @app.put("/api/device/{host}/config/{key}", dependencies=auth)
+    def api_device_config(host: str, key: str, body: ConfigValueBody):
+        # Validation (enum/range and bool coercion) raises ValueError -> HTTP 400.
+        try:
+            if key == "sample-rate":
+                client.set_sample_rate(host, body.value)
+            elif key == "encoding":
+                client.set_encoding(host, body.value)
+            elif key == "latency":
+                client.set_latency(host, body.value)
+            elif key == "aes67":
+                client.set_aes67(host, _coerce_bool(body.value))
+            elif key == "preferred-leader":
+                client.set_preferred_leader(host, _coerce_bool(body.value))
+            else:
+                raise HTTPException(status_code=404, detail=f"unknown config key: {key!r}")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        return {"ok": True}
+
+    @app.put("/api/device/{host}/channel/{number}/gain", dependencies=auth)
+    def api_channel_gain(host: str, number: int, body: ChannelGainBody):
+        try:
+            client.set_channel_gain(host, number, body.level, body.type)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
         return {"ok": True}
 
     @app.post("/api/device/{host}/identify", dependencies=auth)

@@ -6,6 +6,11 @@ import subprocess
 import time
 import urllib.request
 
+# Allowed values for device-config commands (validated server-side -> HTTP 400).
+SAMPLE_RATES = {44100, 48000, 88200, 96000, 176400, 192000}
+ENCODINGS = {16, 24, 32}
+GAIN_LEVELS = {1, 2, 3, 4, 5}
+
 
 def build_state_argv(netaudio_bin: str, timeout: float) -> list[str]:
     return [netaudio_bin, "--timeout", str(timeout), "--output", "json", "device", "list"]
@@ -58,6 +63,37 @@ def build_reboot_argv(netaudio_bin: str, host: str) -> list[str]:
     return [netaudio_bin, "--host", host, "device", "reboot"]
 
 
+def build_sample_rate_argv(netaudio_bin: str, host: str, rate: int) -> list[str]:
+    return [netaudio_bin, "--host", host, "device", "config", "sample-rate", str(rate)]
+
+
+def build_encoding_argv(netaudio_bin: str, host: str, bits: int) -> list[str]:
+    return [netaudio_bin, "--host", host, "device", "config", "encoding", str(bits)]
+
+
+def build_latency_argv(netaudio_bin: str, host: str, value) -> list[str]:
+    return [netaudio_bin, "--host", host, "device", "config", "latency", str(value)]
+
+
+def build_aes67_argv(netaudio_bin: str, host: str, enabled: bool) -> list[str]:
+    return [netaudio_bin, "--host", host, "device", "config", "aes67",
+            "on" if enabled else "off"]
+
+
+def build_preferred_leader_argv(netaudio_bin: str, host: str, enabled: bool) -> list[str]:
+    return [netaudio_bin, "--host", host, "device", "config", "preferred-leader",
+            "on" if enabled else "off"]
+
+
+def build_channel_gain_argv(
+    netaudio_bin: str, host: str, number: int, level: int, channel_type: str
+) -> list[str]:
+    return [
+        netaudio_bin, "--host", host,
+        "channel", "gain", str(number), str(level), "--type", channel_type,
+    ]
+
+
 def _channels(channels_json: dict) -> list[dict]:
     result = []
     for number_str, info in channels_json.items():
@@ -102,6 +138,10 @@ def parse_state(device_list_json: dict) -> dict:
             "online": bool(entry.get("online", True)),
             "model": entry.get("dante_model") or entry.get("model") or "",
             "sample_rate": entry.get("sample_rate"),
+            "encoding": entry.get("encoding"),
+            "latency": entry.get("latency"),
+            "aes67": entry.get("aes67"),
+            "preferred_leader": entry.get("preferred_leader"),
             "clock_role": entry.get("ptp_v1_role") or entry.get("clock_role") or "",
             "tx_channels": _channels(channels.get("transmitters") or {}),
             "rx_channels": _channels(channels.get("receivers") or {}),
@@ -305,3 +345,53 @@ class NetaudioClient:
 
     def reboot(self, host: str) -> None:
         self._run_checked(build_reboot_argv(self.netaudio_bin, host))
+
+    def set_sample_rate(self, host: str, rate) -> None:
+        try:
+            rate = int(rate)
+        except (TypeError, ValueError):
+            raise ValueError(f"invalid sample rate: {rate!r}")
+        if rate not in SAMPLE_RATES:
+            raise ValueError(f"invalid sample rate: {rate}")
+        self._run_checked(build_sample_rate_argv(self.netaudio_bin, host, rate))
+        self._after_change()
+
+    def set_encoding(self, host: str, bits) -> None:
+        try:
+            bits = int(bits)
+        except (TypeError, ValueError):
+            raise ValueError(f"invalid encoding: {bits!r}")
+        if bits not in ENCODINGS:
+            raise ValueError(f"invalid encoding: {bits}")
+        self._run_checked(build_encoding_argv(self.netaudio_bin, host, bits))
+        self._after_change()
+
+    def set_latency(self, host: str, value) -> None:
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"invalid latency: {value!r}")
+        if value <= 0:
+            raise ValueError(f"invalid latency: {value}")
+        self._run_checked(build_latency_argv(self.netaudio_bin, host, value))
+        self._after_change()
+
+    def set_aes67(self, host: str, enabled: bool) -> None:
+        self._run_checked(build_aes67_argv(self.netaudio_bin, host, bool(enabled)))
+        self._after_change()
+
+    def set_preferred_leader(self, host: str, enabled: bool) -> None:
+        self._run_checked(build_preferred_leader_argv(self.netaudio_bin, host, bool(enabled)))
+        self._after_change()
+
+    def set_channel_gain(self, host: str, number: int, level, channel_type: str) -> None:
+        if channel_type not in ("tx", "rx"):
+            raise ValueError(f"invalid channel type: {channel_type!r}")
+        try:
+            level = int(level)
+        except (TypeError, ValueError):
+            raise ValueError(f"invalid gain level: {level!r}")
+        if level not in GAIN_LEVELS:
+            raise ValueError(f"invalid gain level: {level}")
+        self._run_checked(build_channel_gain_argv(self.netaudio_bin, host, number, level, channel_type))
+        self._after_change()

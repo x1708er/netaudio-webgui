@@ -509,6 +509,87 @@ aside#devices {
   border-radius: 6px;
 }
 
+/* ---------- per-device configuration (collapsible) ---------- */
+.device details.config {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
+.device details.config > summary {
+  cursor: pointer;
+  list-style: none;
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: .6px;
+  color: var(--fg-dim);
+  padding: 4px 0;
+  user-select: none;
+  transition: color .15s;
+}
+.device details.config > summary::-webkit-details-marker { display: none; }
+.device details.config > summary:hover { color: var(--accent-2); }
+.device details.config[open] > summary { color: var(--accent-2); }
+.config-grid {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.config-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.config-row > .meta { flex: 1; min-width: 0; }
+.config-row select,
+.config-row input[type="number"] {
+  font: 500 12px/1 var(--font-sans);
+  color: var(--fg);
+  background: var(--cell);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+  min-width: 110px;
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s;
+}
+.config-row input[type="number"] { cursor: text; width: 110px; }
+.config-row select:focus,
+.config-row input[type="number"]:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(79,155,232,.25);
+}
+.config-row input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 38px; height: 20px;
+  border-radius: 999px;
+  background: var(--cell);
+  border: 1px solid var(--line);
+  position: relative;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+  flex: none;
+}
+.config-row input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  left: 2px; top: 50%;
+  transform: translateY(-50%);
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: left .15s, background .15s;
+}
+.config-row input[type="checkbox"]:checked {
+  background: rgba(47,208,126,.18);
+  border-color: rgba(47,208,126,.5);
+}
+.config-row input[type="checkbox"]:checked::after {
+  left: 20px;
+  background: var(--on);
+}
+
 /* ---------- footer status + toasts ---------- */
 .updated {
   position: fixed;

@@ -192,6 +192,7 @@ function buildDevices(state) {
     reboot.className = "danger";
     actions.appendChild(reboot);
     div.appendChild(actions);
+    div.appendChild(buildConfig(d));
     const channels = document.createElement("div");
     channels.className = "channels";
     for (const [kind, list, type] of [["TX", d.tx_channels, "tx"], ["RX", d.rx_channels, "rx"]]) {
@@ -205,7 +206,9 @@ function buildDevices(state) {
       for (const ch of list) {
         const chip = button(ch.label, () => renameChannel(d, ch, type));
         chip.className = "chip";
-        chip.title = `Kanal ${ch.number} umbenennen`;
+        // Left-click renames; right-click sets the channel gain (1–5).
+        chip.title = `Kanal ${ch.number} umbenennen (Rechtsklick: Gain)`;
+        chip.oncontextmenu = (e) => { e.preventDefault(); setChannelGain(d, ch, type); };
         row.appendChild(chip);
       }
       channels.appendChild(row);
@@ -214,6 +217,107 @@ function buildDevices(state) {
     aside.appendChild(div);
   }
   applyFilter();
+}
+
+// ---- per-device configuration (collapsible) ------------------------------
+function buildConfig(d) {
+  const details = document.createElement("details");
+  details.className = "config";
+  const summary = document.createElement("summary");
+  summary.textContent = "⚙ Konfiguration";
+  details.appendChild(summary);
+  const grid = document.createElement("div");
+  grid.className = "config-grid";
+
+  grid.appendChild(configSelect(d, "Sample-Rate", "sample-rate",
+    [44100, 48000, 88200, 96000, 176400, 192000].map(r => [r, r + " Hz"]), d.sample_rate));
+  grid.appendChild(configSelect(d, "Encoding", "encoding",
+    [16, 24, 32].map(b => [b, b + " bit"]), d.encoding));
+  grid.appendChild(configLatency(d));
+  grid.appendChild(configToggle(d, "AES67", "aes67", d.aes67));
+  grid.appendChild(configToggle(d, "Preferred-Leader", "preferred-leader", d.preferred_leader));
+
+  details.appendChild(grid);
+  return details;
+}
+
+// One labelled <select> row. options: [[value, text], …]. selected preselects.
+function configSelect(d, label, key, options, selected) {
+  const wrap = configRow(label);
+  const sel = document.createElement("select");
+  const blank = document.createElement("option");
+  blank.value = "";
+  blank.textContent = "—";
+  sel.appendChild(blank);
+  for (const [value, text] of options) {
+    const opt = document.createElement("option");
+    opt.value = String(value);
+    opt.textContent = text;
+    if (selected != null && String(selected) === String(value)) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  sel.onchange = () => { if (sel.value !== "") sendConfig(d, key, Number(sel.value)); };
+  wrap.appendChild(sel);
+  return wrap;
+}
+
+function configLatency(d) {
+  const wrap = configRow("Latenz (ms)");
+  const input = document.createElement("input");
+  input.type = "number";
+  input.min = "0";
+  input.step = "0.1";
+  if (d.latency != null) input.value = d.latency;
+  input.onchange = () => {
+    const v = parseFloat(input.value);
+    if (!isNaN(v) && v > 0) sendConfig(d, "latency", v);
+  };
+  wrap.appendChild(input);
+  return wrap;
+}
+
+function configToggle(d, label, key, checked) {
+  const wrap = configRow(label);
+  const box = document.createElement("input");
+  box.type = "checkbox";
+  box.checked = !!checked;
+  box.onchange = () => sendConfig(d, key, box.checked);
+  wrap.appendChild(box);
+  return wrap;
+}
+
+function configRow(labelText) {
+  const wrap = document.createElement("label");
+  wrap.className = "config-row";
+  const lbl = document.createElement("span");
+  lbl.className = "meta";
+  lbl.textContent = labelText;
+  wrap.appendChild(lbl);
+  return wrap;
+}
+
+async function sendConfig(d, key, value) {
+  try {
+    await api("PUT", `/api/device/${encodeURIComponent(d.ipv4)}/config/${key}`, { value });
+    toast(`${d.name}: ${key} = ${value}`, "ok");
+  } catch (e) { toast(e.message, "error"); }
+  refresh();
+}
+
+async function setChannelGain(d, ch, type) {
+  const current = ch.gain != null ? ch.gain : "";
+  const answer = prompt(
+    `Gain für Kanal ${ch.number} (${type.toUpperCase()}, ${ch.label}) auf ${d.name} — Stufe 1–5:`,
+    current);
+  if (answer === null) return;
+  const level = parseInt(answer, 10);
+  if (isNaN(level) || level < 1 || level > 5) { toast("Gain muss 1–5 sein", "error"); return; }
+  try {
+    await api("PUT", `/api/device/${encodeURIComponent(d.ipv4)}/channel/${ch.number}/gain`,
+      { level, type });
+    toast(`Gain gesetzt: ${ch.label} = ${level}`, "ok");
+  } catch (e) { toast(e.message, "error"); }
+  refresh();
 }
 
 function button(label, onclick) {

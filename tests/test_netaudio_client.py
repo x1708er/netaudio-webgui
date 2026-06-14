@@ -69,6 +69,45 @@ def test_reboot_argv():
     ]
 
 
+def test_sample_rate_argv():
+    assert nc.build_sample_rate_argv("netaudio", "192.168.178.50", 96000) == [
+        "netaudio", "--host", "192.168.178.50", "device", "config", "sample-rate", "96000",
+    ]
+
+
+def test_encoding_argv():
+    assert nc.build_encoding_argv("netaudio", "192.168.178.50", 24) == [
+        "netaudio", "--host", "192.168.178.50", "device", "config", "encoding", "24",
+    ]
+
+
+def test_latency_argv():
+    assert nc.build_latency_argv("netaudio", "192.168.178.50", 1.5) == [
+        "netaudio", "--host", "192.168.178.50", "device", "config", "latency", "1.5",
+    ]
+
+
+def test_aes67_argv():
+    assert nc.build_aes67_argv("netaudio", "192.168.178.50", True) == [
+        "netaudio", "--host", "192.168.178.50", "device", "config", "aes67", "on",
+    ]
+    assert nc.build_aes67_argv("netaudio", "192.168.178.50", False)[-1] == "off"
+
+
+def test_preferred_leader_argv():
+    assert nc.build_preferred_leader_argv("netaudio", "192.168.178.50", True) == [
+        "netaudio", "--host", "192.168.178.50", "device", "config", "preferred-leader", "on",
+    ]
+    assert nc.build_preferred_leader_argv("netaudio", "192.168.178.50", False)[-1] == "off"
+
+
+def test_channel_gain_argv():
+    assert nc.build_channel_gain_argv("netaudio", "192.168.178.50", 2, 4, "tx") == [
+        "netaudio", "--host", "192.168.178.50",
+        "channel", "gain", "2", "4", "--type", "tx",
+    ]
+
+
 DEVICE_LIST_JSON = {
     "A32-xxxx": {
         "channels": {
@@ -170,6 +209,60 @@ def test_add_subscription_builds_command(monkeypatch):
     client = _client(monkeypatch, capture=capture)
     client.add_subscription(tx_device="Inferno", tx_number=1, rx_device="A32", rx_number=2)
     assert capture[0] == ["netaudio", "subscription", "add", "--tx", "1@Inferno", "--rx", "2@A32"]
+
+
+def test_set_sample_rate_builds_command(monkeypatch):
+    capture = []
+    client = _client(monkeypatch, capture=capture)
+    client.set_sample_rate("192.168.178.50", 96000)
+    assert capture[0] == [
+        "netaudio", "--host", "192.168.178.50", "device", "config", "sample-rate", "96000",
+    ]
+
+
+def test_set_sample_rate_rejects_bad_rate(monkeypatch):
+    capture = []
+    client = _client(monkeypatch, capture=capture)
+    with pytest.raises(ValueError):
+        client.set_sample_rate("192.168.178.50", 12345)
+    assert capture == []  # validation happens before any subprocess call
+
+
+def test_set_encoding_rejects_bad_bits(monkeypatch):
+    capture = []
+    client = _client(monkeypatch, capture=capture)
+    with pytest.raises(ValueError):
+        client.set_encoding("192.168.178.50", 8)
+    assert capture == []
+
+
+def test_set_latency_rejects_non_positive(monkeypatch):
+    client = _client(monkeypatch)
+    with pytest.raises(ValueError):
+        client.set_latency("192.168.178.50", 0)
+
+
+def test_set_channel_gain_builds_command(monkeypatch):
+    capture = []
+    client = _client(monkeypatch, capture=capture)
+    client.set_channel_gain("192.168.178.50", 2, 4, "rx")
+    assert capture[0] == [
+        "netaudio", "--host", "192.168.178.50", "channel", "gain", "2", "4", "--type", "rx",
+    ]
+
+
+def test_set_channel_gain_rejects_out_of_range(monkeypatch):
+    capture = []
+    client = _client(monkeypatch, capture=capture)
+    with pytest.raises(ValueError):
+        client.set_channel_gain("192.168.178.50", 1, 6, "tx")
+    assert capture == []
+
+
+def test_set_channel_gain_rejects_bad_type(monkeypatch):
+    client = _client(monkeypatch)
+    with pytest.raises(ValueError):
+        client.set_channel_gain("192.168.178.50", 1, 3, "mid")
 
 
 def test_mutation_raises_on_error(monkeypatch):

@@ -32,6 +32,34 @@ class FakeClient:
     def set_channel_name(self, host, number, new_name, channel_type):
         self.calls.append(("channel_name", host, number, new_name, channel_type))
 
+    def set_sample_rate(self, host, rate):
+        if rate not in {44100, 48000, 88200, 96000, 176400, 192000}:
+            raise ValueError(f"invalid sample rate: {rate}")
+        self.calls.append(("sample_rate", host, rate))
+
+    def set_encoding(self, host, bits):
+        if bits not in {16, 24, 32}:
+            raise ValueError(f"invalid encoding: {bits}")
+        self.calls.append(("encoding", host, bits))
+
+    def set_latency(self, host, value):
+        if float(value) <= 0:
+            raise ValueError(f"invalid latency: {value}")
+        self.calls.append(("latency", host, value))
+
+    def set_aes67(self, host, enabled):
+        self.calls.append(("aes67", host, enabled))
+
+    def set_preferred_leader(self, host, enabled):
+        self.calls.append(("preferred_leader", host, enabled))
+
+    def set_channel_gain(self, host, number, level, channel_type):
+        if channel_type not in ("tx", "rx"):
+            raise ValueError(f"invalid channel type: {channel_type}")
+        if level not in {1, 2, 3, 4, 5}:
+            raise ValueError(f"invalid gain level: {level}")
+        self.calls.append(("gain", host, number, level, channel_type))
+
     def identify(self, host):
         self.calls.append(("identify", host))
 
@@ -118,6 +146,105 @@ def test_channel_name_route_calls_client():
                       json={"name": "Vocals", "type": "rx"})
     assert resp.status_code == 200
     assert ("channel_name", "10.0.0.1", 2, "Vocals", "rx") in fake.calls
+
+
+def test_config_sample_rate_calls_client():
+    app, fake = _app()
+    client = TestClient(app)
+    resp = client.put("/api/device/10.0.0.1/config/sample-rate", json={"value": 96000})
+    assert resp.status_code == 200
+    assert ("sample_rate", "10.0.0.1", 96000) in fake.calls
+
+
+def test_config_encoding_calls_client():
+    app, fake = _app()
+    client = TestClient(app)
+    resp = client.put("/api/device/10.0.0.1/config/encoding", json={"value": 24})
+    assert resp.status_code == 200
+    assert ("encoding", "10.0.0.1", 24) in fake.calls
+
+
+def test_config_latency_calls_client():
+    app, fake = _app()
+    client = TestClient(app)
+    resp = client.put("/api/device/10.0.0.1/config/latency", json={"value": 2})
+    assert resp.status_code == 200
+    assert ("latency", "10.0.0.1", 2) in fake.calls
+
+
+def test_config_latency_accepts_float():
+    # The latency control sends a float; the body model must not reject it.
+    app, fake = _app()
+    client = TestClient(app)
+    resp = client.put("/api/device/10.0.0.1/config/latency", json={"value": 2.5})
+    assert resp.status_code == 200
+    assert ("latency", "10.0.0.1", 2.5) in fake.calls
+
+
+def test_config_aes67_bool_not_coerced_to_int():
+    # JSON true/false must stay bool (not become 1/0 via the int union member).
+    app, fake = _app()
+    client = TestClient(app)
+    client.put("/api/device/10.0.0.1/config/aes67", json={"value": True})
+    client.put("/api/device/10.0.0.1/config/aes67", json={"value": False})
+    assert ("aes67", "10.0.0.1", True) in fake.calls
+    assert ("aes67", "10.0.0.1", False) in fake.calls
+
+
+def test_config_aes67_coerces_string_to_bool():
+    app, fake = _app()
+    client = TestClient(app)
+    assert client.put("/api/device/10.0.0.1/config/aes67", json={"value": "on"}).status_code == 200
+    assert ("aes67", "10.0.0.1", True) in fake.calls
+    assert client.put("/api/device/10.0.0.1/config/aes67", json={"value": "off"}).status_code == 200
+    assert ("aes67", "10.0.0.1", False) in fake.calls
+
+
+def test_config_preferred_leader_accepts_bool():
+    app, fake = _app()
+    client = TestClient(app)
+    resp = client.put("/api/device/10.0.0.1/config/preferred-leader", json={"value": True})
+    assert resp.status_code == 200
+    assert ("preferred_leader", "10.0.0.1", True) in fake.calls
+
+
+def test_config_invalid_value_400():
+    app, fake = _app()
+    client = TestClient(app)
+    resp = client.put("/api/device/10.0.0.1/config/sample-rate", json={"value": 12345})
+    assert resp.status_code == 400
+    assert fake.calls == []
+
+
+def test_config_invalid_bool_400():
+    app, _ = _app()
+    client = TestClient(app)
+    resp = client.put("/api/device/10.0.0.1/config/aes67", json={"value": "maybe"})
+    assert resp.status_code == 400
+
+
+def test_config_unknown_key_404():
+    app, fake = _app()
+    client = TestClient(app)
+    resp = client.put("/api/device/10.0.0.1/config/bogus", json={"value": 1})
+    assert resp.status_code == 404
+    assert fake.calls == []
+
+
+def test_channel_gain_calls_client():
+    app, fake = _app()
+    client = TestClient(app)
+    resp = client.put("/api/device/10.0.0.1/channel/2/gain", json={"level": 4, "type": "tx"})
+    assert resp.status_code == 200
+    assert ("gain", "10.0.0.1", 2, 4, "tx") in fake.calls
+
+
+def test_channel_gain_out_of_range_400():
+    app, fake = _app()
+    client = TestClient(app)
+    resp = client.put("/api/device/10.0.0.1/channel/2/gain", json={"level": 6, "type": "tx"})
+    assert resp.status_code == 400
+    assert fake.calls == []
 
 
 def test_add_subscription_calls_client():
