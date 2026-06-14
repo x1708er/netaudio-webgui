@@ -6,8 +6,6 @@ Browser-based Dante routing matrix + device management on top of the `netaudio` 
 > expect bugs, rough edges, and breaking changes. Not yet recommended for
 > production / live use.
 
-![netaudio Web-GUI — Dante routing matrix with device panel](docs/screenshot.png)
-
 ## Features
 
 - **Routing matrix** — click a cell to subscribe/unsubscribe; optimistic updates,
