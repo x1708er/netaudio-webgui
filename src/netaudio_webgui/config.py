@@ -23,6 +23,8 @@ class Settings:
     # NETAUDIO_GUI_RESTART_ON_CHANGE=1 to force a full daemon restart instead
     # (more reliable but costs ~seconds per action).
     restart_on_change: bool = False
+    # Where named routing scenes (presets) are persisted.
+    presets_path: str = "~/.config/netaudio-webgui/presets.json"
 
 
 def load_settings() -> Settings:
@@ -37,4 +39,6 @@ def load_settings() -> Settings:
         relay_host=os.environ.get("NETAUDIO_RELAY_HOST", "127.0.0.1"),
         relay_port=int(os.environ.get("NETAUDIO_RELAY_PORT", "9000")),
         restart_on_change=_truthy(os.environ.get("NETAUDIO_GUI_RESTART_ON_CHANGE", "0")),
+        presets_path=os.environ.get("NETAUDIO_GUI_PRESETS")
+        or os.path.expanduser("~/.config/netaudio-webgui/presets.json"),
     )

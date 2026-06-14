@@ -10,6 +10,14 @@
   <header>
     <h1>netaudio</h1>
     <span id="leader" class="leader"></span>
+    <div class="presets" title="Szenen / Presets">
+      <select id="preset-select" title="Gespeicherte Szene wählen">
+        <option value="">— Szene —</option>
+      </select>
+      <button id="preset-apply" title="Gewählte Szene auf die Matrix anwenden">Anwenden</button>
+      <button id="preset-save" title="Aktuelle Matrix als Szene speichern">💾 Speichern</button>
+      <button id="preset-delete" class="danger" title="Gewählte Szene löschen">🗑</button>
+    </div>
     <input id="search" type="search" placeholder="Suche Geräte/Kanäle…" title="Matrix & Geräte filtern ( / )" autocomplete="off">
     <button id="disconnect-all" class="danger" title="Alle aktiven Abos trennen">Alle trennen</button>
     <button id="rescan" title="Geräte & Abos neu vom Daemon einlesen (für Änderungen außerhalb der GUI)">↻ Neu einlesen</button>

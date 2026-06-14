@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from netaudio_webgui.config import Settings, load_settings
 from netaudio_webgui.netaudio_client import NetaudioClient, NetaudioError
+from netaudio_webgui.presets import PresetStore
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -42,6 +43,66 @@ class ChannelNameBody(BaseModel):
     type: str  # "tx" | "rx"
 
 
+def plan_apply(desired: list[dict], state: dict) -> tuple[list[dict], list[dict], int]:
+    """Compute the diff to make the live routing EXACTLY match ``desired``.
+
+    ``desired`` is a list of ``{rx_device, rx_channel, tx_device, tx_channel}``
+    with channels given as display LABELS. Resolution uses ``state["devices"]``
+    per-device label->number maps. Returns ``(add, remove, skipped)``:
+      * add    — desired subs not currently present, as
+                 ``{tx_device, tx_number, rx_device, rx_number}``.
+      * remove — current subs not in desired, as ``{rx_device, rx_number}``.
+      * skipped — desired subs whose device/channel can't be resolved.
+    Identity is keyed on (rx_device, rx_channel, tx_device, tx_channel) labels;
+    only one sub per RX channel is possible in Dante, so an add that changes the
+    TX of an already-subscribed RX is simply an add (netaudio overwrites).
+    """
+    # Per-device label -> number maps for rx and tx channels.
+    rx_numbers: dict[str, dict[str, int]] = {}
+    tx_numbers: dict[str, dict[str, int]] = {}
+    for device in state.get("devices", []):
+        name = device.get("name", "")
+        rx_numbers[name] = {c["label"]: c["number"] for c in device.get("rx_channels", [])}
+        tx_numbers[name] = {c["label"]: c["number"] for c in device.get("tx_channels", [])}
+
+    def key(sub: dict) -> tuple[str, str, str, str]:
+        return (sub.get("rx_device", ""), sub.get("rx_channel", ""),
+                sub.get("tx_device", ""), sub.get("tx_channel", ""))
+
+    current = {key(s): s for s in state.get("subscriptions", [])}
+    desired_keys: set[tuple[str, str, str, str]] = set()
+
+    add: list[dict] = []
+    skipped = 0
+    for sub in desired:
+        rx_device = sub.get("rx_device", "")
+        tx_device = sub.get("tx_device", "")
+        rx_number = rx_numbers.get(rx_device, {}).get(sub.get("rx_channel", ""))
+        tx_number = tx_numbers.get(tx_device, {}).get(sub.get("tx_channel", ""))
+        if rx_number is None or tx_number is None:
+            skipped += 1
+            continue
+        k = key(sub)
+        desired_keys.add(k)
+        if k not in current:
+            add.append({
+                "tx_device": tx_device, "tx_number": tx_number,
+                "rx_device": rx_device, "rx_number": rx_number,
+            })
+
+    remove: list[dict] = []
+    for k, sub in current.items():
+        if k in desired_keys:
+            continue
+        rx_device = sub.get("rx_device", "")
+        rx_number = rx_numbers.get(rx_device, {}).get(sub.get("rx_channel", ""))
+        if rx_number is None:
+            continue  # unresolvable RX label — can't issue a removal
+        remove.append({"rx_device": rx_device, "rx_number": rx_number})
+
+    return add, remove, skipped
+
+
 def _make_client(settings: Settings):
     if settings.demo:
         from netaudio_webgui.fixtures import DemoClient
@@ -53,9 +114,10 @@ def _make_client(settings: Settings):
     )
 
 
-def create_app(settings: Settings | None = None, client=None) -> FastAPI:
+def create_app(settings: Settings | None = None, client=None, store=None) -> FastAPI:
     settings = settings or load_settings()
     client = client or _make_client(settings)
+    store = store or PresetStore(settings.presets_path)
     app = FastAPI(title="netaudio Web GUI")
 
     def require_token(authorization: str | None = Header(default=None)) -> None:
@@ -122,6 +184,52 @@ def create_app(settings: Settings | None = None, client=None) -> FastAPI:
     @app.post("/api/device/{host}/reboot", dependencies=auth)
     def api_reboot(host: str):
         client.reboot(host)
+        return {"ok": True}
+
+    @app.get("/api/presets", dependencies=auth)
+    def api_list_presets():
+        return {"presets": store.list()}
+
+    @app.post("/api/presets", dependencies=auth)
+    def api_save_preset(body: NameBody):
+        subs = [
+            {"rx_device": s["rx_device"], "rx_channel": s["rx_channel"],
+             "tx_device": s["tx_device"], "tx_channel": s["tx_channel"]}
+            for s in client.get_state()["subscriptions"]
+        ]
+        try:
+            store.save(body.name, subs)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        return {"ok": True, "count": len(subs)}
+
+    @app.post("/api/presets/{name}/apply", dependencies=auth)
+    def api_apply_preset(name: str):
+        try:
+            desired = store.get(name)
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"preset {name!r} not found")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        add, remove, skipped = plan_apply(desired, client.get_state())
+        added = 0
+        for a in add:
+            client.add_subscription(**a)
+            added += 1
+        removed = 0
+        for r in remove:
+            client.remove_subscription(**r)
+            removed += 1
+        return {"ok": True, "added": added, "removed": removed, "skipped": skipped}
+
+    @app.delete("/api/presets/{name}", dependencies=auth)
+    def api_delete_preset(name: str):
+        try:
+            store.delete(name)
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"preset {name!r} not found")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
         return {"ok": True}
 
     @app.get("/")

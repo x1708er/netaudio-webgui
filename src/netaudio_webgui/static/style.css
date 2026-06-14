@@ -165,6 +165,35 @@ header button.danger:hover {
   box-shadow: 0 0 0 1px rgba(236,75,80,.3), 0 6px 16px -10px rgba(236,75,80,.7);
 }
 
+/* presets / scenes group — sits inline in the header, before the search */
+.presets {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: rgba(15,19,26,.45);
+}
+.presets select#preset-select {
+  font: 500 12px/1 var(--font-sans);
+  color: var(--fg);
+  background: var(--cell);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+  max-width: 170px;
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s;
+}
+.presets select#preset-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(79,155,232,.25);
+}
+.presets button { padding: 6px 10px; }
+.presets button.danger { padding: 6px 9px; }
+
 /* RX device-header clear-all affordance */
 #matrix th.rx-dev { padding-right: 26px; }  /* room for the ✕ */
 .rx-clear {

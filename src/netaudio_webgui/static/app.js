@@ -423,6 +423,62 @@ async function rescan() {
   refresh();
 }
 
+// ---- presets / scenes ----------------------------------------------------
+// Save the whole routing matrix as a named scene and recall it. Recall makes
+// the live routing EXACTLY match the saved scene (add missing, remove extra).
+async function loadPresets() {
+  const sel = document.getElementById("preset-select");
+  const previous = sel.value;
+  let names = [];
+  try {
+    names = (await api("GET", "/api/presets")).presets || [];
+  } catch (e) { return; }  // keep the current list on a transient failure
+  sel.innerHTML = '<option value="">— Szene —</option>';
+  for (const name of names) {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    sel.appendChild(opt);
+  }
+  if (names.includes(previous)) sel.value = previous;  // keep selection if still present
+}
+
+async function savePreset() {
+  const sel = document.getElementById("preset-select");
+  const name = prompt("Name der Szene:", sel.value || "");
+  if (!name || !name.trim()) return;
+  try {
+    const res = await api("POST", "/api/presets", { name: name.trim() });
+    toast(`gespeichert: ${name.trim()} (${res.count} Routen)`, "ok");
+    await loadPresets();
+    sel.value = name.trim();
+  } catch (e) { toast(e.message, "error"); }
+}
+
+async function applyPreset() {
+  const sel = document.getElementById("preset-select");
+  const name = sel.value;
+  if (!name) { toast("keine Szene gewählt", "error"); return; }
+  if (!confirm(`Szene „${name}" anwenden? Routing wird exakt angeglichen.`)) return;
+  try {
+    const res = await api("POST", `/api/presets/${encodeURIComponent(name)}/apply`);
+    toast(`${name}: +${res.added} / -${res.removed} / übersprungen ${res.skipped}`, "ok");
+  } catch (e) { toast(e.message, "error"); }
+  refresh();
+}
+
+async function deletePreset() {
+  const sel = document.getElementById("preset-select");
+  const name = sel.value;
+  if (!name) { toast("keine Szene gewählt", "error"); return; }
+  if (!confirm(`Szene „${name}" löschen?`)) return;
+  try {
+    await api("DELETE", `/api/presets/${encodeURIComponent(name)}`);
+    toast(`gelöscht: ${name}`, "ok");
+    await loadPresets();
+  } catch (e) { toast(e.message, "error"); }
+}
+
 // Crosshair hover: light up the hovered cell's whole row and column (patchbay
 // feel). One delegated listener on the table survives every re-render.
 function clearCrosshair() {
@@ -449,6 +505,9 @@ function clearCrosshair() {
 document.getElementById("rescan").onclick = rescan;
 document.getElementById("refresh").onclick = refresh;
 document.getElementById("disconnect-all").onclick = disconnectAll;
+document.getElementById("preset-save").onclick = savePreset;
+document.getElementById("preset-apply").onclick = applyPreset;
+document.getElementById("preset-delete").onclick = deletePreset;
 
 // Live search: store the query and re-apply the filter (no re-render needed).
 const searchInput = document.getElementById("search");
@@ -466,5 +525,6 @@ document.addEventListener("keydown", (e) => {
 });
 
 refresh();
+loadPresets();
 pollTimer = setInterval(refresh, POLL_MS);
 setInterval(updateAge, 1000);  // tick the "last updated" age even between polls

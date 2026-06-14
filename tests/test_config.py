@@ -5,7 +5,7 @@ def test_defaults(monkeypatch):
     for var in ("NETAUDIO_GUI_BIND", "NETAUDIO_GUI_PORT", "NETAUDIO_GUI_TOKEN",
                 "NETAUDIO_GUI_DEMO", "NETAUDIO_BIN", "NETAUDIO_GUI_TIMEOUT",
                 "NETAUDIO_RELAY_HOST", "NETAUDIO_RELAY_PORT",
-                "NETAUDIO_GUI_RESTART_ON_CHANGE"):
+                "NETAUDIO_GUI_RESTART_ON_CHANGE", "NETAUDIO_GUI_PRESETS"):
         monkeypatch.delenv(var, raising=False)
     s = load_settings()
     assert s.bind == "0.0.0.0"
@@ -17,6 +17,12 @@ def test_defaults(monkeypatch):
     assert s.relay_host == "127.0.0.1"
     assert s.relay_port == 9000
     assert s.restart_on_change is False
+    assert s.presets_path.endswith("netaudio-webgui/presets.json")
+
+
+def test_presets_path_override(monkeypatch):
+    monkeypatch.setenv("NETAUDIO_GUI_PRESETS", "/tmp/scenes.json")
+    assert load_settings().presets_path == "/tmp/scenes.json"
 
 
 def test_restart_on_change_can_be_enabled(monkeypatch):

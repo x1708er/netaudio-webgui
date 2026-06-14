@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 
 from netaudio_webgui.app import create_app
 from netaudio_webgui.config import Settings
+from netaudio_webgui.presets import PresetStore
 
 
 class FakeClient:
@@ -53,6 +54,37 @@ def _app(token=None):
                         netaudio_bin="netaudio", discovery_timeout=2.0)
     app = create_app(settings=settings, client=fake)
     return app, fake
+
+
+def _routing_state(subscriptions):
+    """A state with two devices + channels so label->number resolution works."""
+    return {
+        "devices": [
+            {"name": "Inferno", "ipv4": "10.0.0.2", "server_name": "Inferno",
+             "online": True, "model": "x", "sample_rate": 48000, "clock_role": "leader",
+             "tx_channels": [{"number": 1, "name": "L", "label": "L"},
+                             {"number": 2, "name": "R", "label": "R"}],
+             "rx_channels": [{"number": 1, "name": "01", "label": "01"},
+                             {"number": 2, "name": "02", "label": "02"}]},
+            {"name": "A32", "ipv4": "10.0.0.1", "server_name": "A32",
+             "online": True, "model": "x", "sample_rate": 48000, "clock_role": "follower",
+             "tx_channels": [{"number": 1, "name": "Mic1", "label": "Mic1"}],
+             "rx_channels": [{"number": 1, "name": "01", "label": "01"},
+                             {"number": 2, "name": "02", "label": "02"}]},
+        ],
+        "subscriptions": subscriptions,
+        "leader": "Inferno",
+    }
+
+
+def _preset_app(tmp_path, subscriptions=None):
+    fake = FakeClient()
+    fake.state = _routing_state(subscriptions or [])
+    settings = Settings(bind="127.0.0.1", port=1, token=None, demo=False,
+                        netaudio_bin="netaudio", discovery_timeout=2.0)
+    store = PresetStore(tmp_path / "presets.json")
+    app = create_app(settings=settings, client=fake, store=store)
+    return app, fake, store
 
 
 def test_state_endpoint_returns_state():
@@ -162,3 +194,88 @@ def test_rescan_calls_client_force_refresh():
     client = TestClient(app)
     assert client.post("/api/rescan").status_code == 200
     assert ("force_refresh",) in fake.calls
+
+
+# ---- presets / scenes ----------------------------------------------------
+
+_SUB = {"rx_device": "A32", "rx_channel": "01", "tx_device": "Inferno", "tx_channel": "L",
+        "state": "connected", "label": "Connected"}
+
+
+def test_save_preset_snapshots_current_subs(tmp_path):
+    app, _, store = _preset_app(tmp_path, [_SUB])
+    client = TestClient(app)
+    resp = client.post("/api/presets", json={"name": "Show A"})
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "count": 1}
+    # Stored snapshot keeps only the four routing fields.
+    assert store.get("Show A") == [
+        {"rx_device": "A32", "rx_channel": "01", "tx_device": "Inferno", "tx_channel": "L"}
+    ]
+
+
+def test_list_presets(tmp_path):
+    app, _, store = _preset_app(tmp_path)
+    store.save("alpha", [])
+    store.save("zebra", [])
+    client = TestClient(app)
+    resp = client.get("/api/presets")
+    assert resp.status_code == 200
+    assert resp.json() == {"presets": ["alpha", "zebra"]}
+
+
+def test_apply_preset_records_add_and_remove(tmp_path):
+    # Current live state: A32/02 <- Inferno/R. Desired preset: A32/01 <- Inferno/L.
+    current = [{"rx_device": "A32", "rx_channel": "02", "tx_device": "Inferno", "tx_channel": "R",
+                "state": "connected", "label": "Connected"}]
+    app, fake, store = _preset_app(tmp_path, current)
+    store.save("Show A", [
+        {"rx_device": "A32", "rx_channel": "01", "tx_device": "Inferno", "tx_channel": "L"}
+    ])
+    client = TestClient(app)
+    resp = client.post("/api/presets/Show A/apply")
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "added": 1, "removed": 1, "skipped": 0}
+    assert ("add", {"tx_device": "Inferno", "tx_number": 1,
+                    "rx_device": "A32", "rx_number": 1}) in fake.calls
+    assert ("remove", {"rx_device": "A32", "rx_number": 2}) in fake.calls
+
+
+def test_apply_preset_skips_unresolvable(tmp_path):
+    app, fake, store = _preset_app(tmp_path, [])
+    store.save("Ghosts", [
+        {"rx_device": "Ghost", "rx_channel": "01", "tx_device": "Inferno", "tx_channel": "L"}
+    ])
+    client = TestClient(app)
+    resp = client.post("/api/presets/Ghosts/apply")
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "added": 0, "removed": 0, "skipped": 1}
+    assert fake.calls == []
+
+
+def test_delete_preset(tmp_path):
+    app, _, store = _preset_app(tmp_path)
+    store.save("Show A", [])
+    client = TestClient(app)
+    resp = client.request("DELETE", "/api/presets/Show A")
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True}
+    assert store.list() == []
+
+
+def test_apply_missing_preset_404(tmp_path):
+    app, _, _ = _preset_app(tmp_path)
+    client = TestClient(app)
+    assert client.post("/api/presets/nope/apply").status_code == 404
+
+
+def test_delete_missing_preset_404(tmp_path):
+    app, _, _ = _preset_app(tmp_path)
+    client = TestClient(app)
+    assert client.request("DELETE", "/api/presets/nope").status_code == 404
+
+
+def test_save_empty_name_400(tmp_path):
+    app, _, _ = _preset_app(tmp_path)
+    client = TestClient(app)
+    assert client.post("/api/presets", json={"name": "   "}).status_code == 400
