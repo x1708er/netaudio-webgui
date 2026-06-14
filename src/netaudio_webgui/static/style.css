@@ -266,11 +266,13 @@ table#matrix {
   height: var(--cell-size);
   min-width: var(--cell-size);
   cursor: pointer;
-  background: var(--cell);
+  background: var(--cell-bg, var(--cell));
   transition: background .18s, box-shadow .2s, transform .08s;
   position: relative;
 }
-#matrix tr:nth-child(even) td.cell { background: var(--cell-alt); }
+/* zebra striping only sets a base-tint variable so it never overrides the
+   status backgrounds (.on/.err/.warn) on even rows */
+#matrix tr:nth-child(even) td.cell { --cell-bg: var(--cell-alt); }
 
 #matrix td.cell:hover {
   outline: 2px solid var(--accent);
