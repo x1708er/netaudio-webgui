@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Launch the netaudio web GUI. Ensures the netaudio daemon is running for warm discovery.
+set -euo pipefail
+
+# Resolve the project dir from this script's real location (works when invoked
+# via the ~/bin/inferno-gui symlink): <repo>/bin/inferno-gui -> <repo>.
+_self="$(readlink -f "${BASH_SOURCE[0]}")"
+PROJECT_DIR="$(cd "$(dirname "$_self")/.." && pwd)"
+export NETAUDIO_GUI_BIND="${NETAUDIO_GUI_BIND:-0.0.0.0}"
+export NETAUDIO_GUI_PORT="${NETAUDIO_GUI_PORT:-36342}"
+# export NETAUDIO_GUI_TOKEN=...   # optional: require a bearer token on the LAN
+if [ -z "${NETAUDIO_GUI_TOKEN:-}" ]; then
+  echo "WARNING: NETAUDIO_GUI_TOKEN not set — the GUI is reachable unauthenticated on ${NETAUDIO_GUI_BIND}. Set NETAUDIO_GUI_TOKEN to require a bearer token." >&2
+fi
+
+NETAUDIO_BIN="${NETAUDIO_BIN:-$(command -v netaudio || echo "$HOME/.local/bin/netaudio")}"
+export NETAUDIO_BIN
+
+# Warm discovery: start the daemon if it is not already running.
+# Query status once; start if the call fails or the output reports "not running".
+# (Note: matching "running" alone is wrong — it also matches "not running".)
+if ! daemon_status="$("$NETAUDIO_BIN" daemon status 2>&1)" \
+   || printf '%s' "$daemon_status" | grep -qi "not running"; then
+  echo "Starting netaudio daemon for warm discovery…"
+  "$NETAUDIO_BIN" daemon start || echo "warning: could not start daemon; falling back to one-shot mDNS scans" >&2
+fi
+
+echo "netaudio Web-GUI → http://${NETAUDIO_GUI_BIND}:${NETAUDIO_GUI_PORT}/"
+exec uv --project "$PROJECT_DIR" run uvicorn netaudio_webgui.app:app \
+  --host "$NETAUDIO_GUI_BIND" --port "$NETAUDIO_GUI_PORT"

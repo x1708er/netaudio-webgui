@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>netaudio — Dante Routing</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>netaudio</h1>
+    <span id="leader" class="leader"></span>
+    <button id="rescan" title="Geräte & Abos neu vom Daemon einlesen (für Änderungen außerhalb der GUI)">↻ Neu einlesen</button>
+    <button id="refresh" title="Ansicht aktualisieren">⟳</button>
+  </header>
+  <div id="banner" class="banner hidden"></div>
+  <main>
+    <section id="matrix-wrap"><table id="matrix"></table></section>
+    <aside id="devices"></aside>
+  </main>
+  <div id="updated" class="updated"></div>
+  <div id="toasts"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+# netaudio Web-GUI
+
+Browser-based Dante routing matrix + device management on top of the `netaudio` CLI.
+
+## Run
+
+    ~/bin/inferno-gui            # starts the netaudio daemon + serves on 0.0.0.0:36342
+
+Open http://<this-host>:36342/ from any device on the LAN.
+
+### Demo mode (no hardware)
+
+    NETAUDIO_GUI_DEMO=1 uv --project ~/src/netaudio-webgui run uvicorn netaudio_webgui.app:app
+
+### Configuration (env vars)
+
+| Var | Default | Meaning |
+|---|---|---|
+| `NETAUDIO_GUI_BIND` | `0.0.0.0` | bind address |
+| `NETAUDIO_GUI_PORT` | `36342` | port |
+| `NETAUDIO_GUI_TOKEN` | (unset) | if set, all `/api/*` require `Authorization: Bearer <token>`; append `?token=<token>` to the URL |
+| `NETAUDIO_GUI_DEMO` | `0` | serve in-memory demo data |
+| `NETAUDIO_BIN` | `netaudio` | path to the netaudio binary |
+| `NETAUDIO_GUI_TIMEOUT` | `2.0` | mDNS scan timeout when the daemon is not running |
+| `NETAUDIO_RELAY_HOST` | `127.0.0.1` | netaudio daemon relay host (for forced cache refresh) |
+| `NETAUDIO_RELAY_PORT` | `9000` | netaudio daemon relay port |
+
+## Keeping the view fresh
+
+The netaudio daemon caches device state (channels **and** subscriptions). Changes made
+through this GUI auto-trigger a daemon refresh, so they appear on the next poll. For changes
+made **outside** the GUI (Dante Controller, channel-count edits, device restarts), click
+**"↻ Neu einlesen"** to force the daemon to re-query. If a device fully dropped and
+re-joined and a refresh isn't enough, restart the daemon: `netaudio daemon restart`.
+
+## Tests
+
+    uv --project ~/src/netaudio-webgui run --group dev pytest -q
