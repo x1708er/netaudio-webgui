@@ -6,6 +6,8 @@ let lastGoodTime = null;         // timestamp of the last poll that returned dev
 const pending = new Map();       // cellKey -> "add" | "remove" (optimistic, awaiting confirm)
 let mutationChain = Promise.resolve();  // serialize mutations (each triggers a daemon restart)
 let filterQuery = "";            // live search filter (lower-cased), re-applied after every render
+const openSections = new Set();  // keys of expanded <details> (device + section), kept across re-renders
+let lastDevicesJson = null;      // signature of last-rendered device data — skip needless panel rebuilds
 
 function headers(extra) {
   const h = Object.assign({}, extra || {});
@@ -209,6 +211,12 @@ function onCellClick(rx, tx, isSubscribed) {
 
 function buildDevices(state) {
   const aside = document.getElementById("devices");
+  // Skip the full rebuild when the device data is unchanged (polls fire every
+  // few seconds): rebuilding would collapse open <details> and drop focus from
+  // a control the user is editing. Only re-render when the data actually changes.
+  const sig = JSON.stringify(state.devices);
+  if (sig === lastDevicesJson && aside.childElementCount) { applyFilter(); return; }
+  lastDevicesJson = sig;
   aside.innerHTML = "";
   for (const d of state.devices) {
     const div = document.createElement("div");
@@ -263,12 +271,22 @@ function buildDevices(state) {
   applyFilter();
 }
 
+// Keep a <details> section's open/closed state across full re-renders of the
+// device panel (it rebuilds via innerHTML), keyed by device name + section.
+function persistDetails(details, key) {
+  details.open = openSections.has(key);
+  details.addEventListener("toggle", () => {
+    if (details.open) openSections.add(key); else openSections.delete(key);
+  });
+}
+
 // ---- per-device detail view (collapsible) --------------------------------
 // Read-only key/value list of every field carried in the state. Null/undefined
 // values render as "—". Built with createElement for safe escaping.
 function buildDetails(d) {
   const details = document.createElement("details");
   details.className = "config details";
+  persistDetails(details, d.name + " details");
   const summary = document.createElement("summary");
   summary.textContent = "ℹ Details";
   details.appendChild(summary);
@@ -314,6 +332,7 @@ function detailRow(label, value) {
 function buildConfig(d) {
   const details = document.createElement("details");
   details.className = "config";
+  persistDetails(details, d.name + " config");
   const summary = document.createElement("summary");
   summary.textContent = "⚙ Konfiguration";
   details.appendChild(summary);
