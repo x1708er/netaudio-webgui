@@ -29,6 +29,14 @@ _DEMO_DEVICES = [
         "rx_channels": [{"number": 1, "name": "01", "label": "01"},
                         {"number": 2, "name": "02", "label": "02"}],
     },
+    {
+        "name": "Stagebox", "ipv4": "192.168.178.52", "server_name": "Stagebox-demo",
+        "online": False, "model": "AVIO Output", "sample_rate": 48000,
+        "encoding": 24, "latency": 2.0, "aes67": True, "preferred_leader": False,
+        "clock_role": "follower",
+        "tx_channels": [{"number": 1, "name": "Out1", "label": "Out1"}],
+        "rx_channels": [{"number": 1, "name": "In1", "label": "In1"}],
+    },
 ]
 
 _DEMO_SUBSCRIPTIONS = [

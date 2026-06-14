@@ -9,7 +9,7 @@
 <body>
   <header>
     <h1>netaudio</h1>
-    <span id="leader" class="leader"></span>
+    <span id="clock" class="clock"></span>
     <div class="presets" title="Szenen / Presets">
       <select id="preset-select" title="Gespeicherte Szene wählen">
         <option value="">— Szene —</option>
@@ -25,7 +25,18 @@
   </header>
   <div id="banner" class="banner hidden"></div>
   <main>
-    <section id="matrix-wrap"><table id="matrix"></table></section>
+    <section id="matrix-col">
+      <details id="legend" class="legend">
+        <summary>Legende</summary>
+        <div class="legend-items">
+          <span class="legend-item"><span class="swatch on"></span>verbunden</span>
+          <span class="legend-item"><span class="swatch warn"></span>im Aufbau / unbekannt</span>
+          <span class="legend-item"><span class="swatch err"></span>Fehler / unresolved</span>
+          <span class="legend-item"><span class="swatch pending"></span>ausstehend (optimistisch)</span>
+        </div>
+      </details>
+      <section id="matrix-wrap"><table id="matrix"></table></section>
+    </section>
     <aside id="devices"></aside>
   </main>
   <div id="updated" class="updated"></div>

@@ -98,6 +98,13 @@ header h1::before {  /* signal-dot brand mark with live pulse */
   100% { box-shadow: 0 0 0 0 rgba(47,208,126,0), 0 0 10px 1px rgba(47,208,126,.7); }
 }
 
+/* clock panel: leader chip + compact follower count */
+.clock {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.clock:empty { display: none; }
 .leader {
   font: 500 11px/1 var(--font-mono);
   letter-spacing: .4px;
@@ -109,6 +116,23 @@ header h1::before {  /* signal-dot brand mark with live pulse */
   white-space: nowrap;
 }
 .leader:empty { display: none; }
+/* no leader — subtle amber warning state */
+.leader.none {
+  color: var(--warn);
+  border-color: rgba(231,177,59,.35);
+  background: rgba(231,177,59,.10);
+}
+.follower-chip {
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: .4px;
+  color: var(--fg-dim);
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  white-space: nowrap;
+  cursor: default;
+}
 
 /* shared button look */
 header button,
@@ -238,6 +262,68 @@ main {
 }
 
 /* ---------- matrix ---------- */
+/* legend + matrix stacked; the device panel sits to their right */
+#matrix-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* status legend — small, collapsible, sits above the matrix */
+.legend {
+  align-self: flex-start;
+  max-width: 72vw;
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: .3px;
+  color: var(--fg-dim);
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: rgba(15,19,26,.45);
+  padding: 6px 10px;
+}
+.legend > summary {
+  cursor: pointer;
+  list-style: none;
+  letter-spacing: .6px;
+  color: var(--muted);
+  user-select: none;
+  transition: color .15s;
+}
+.legend > summary::-webkit-details-marker { display: none; }
+.legend > summary:hover,
+.legend[open] > summary { color: var(--accent-2); }
+.legend-items {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.legend-item { display: flex; align-items: center; gap: 7px; color: var(--fg-dim); }
+.legend .swatch {
+  width: 16px; height: 16px;
+  flex: none;
+  border-radius: 4px;
+  background: var(--cell);
+}
+.legend .swatch.on {
+  background: radial-gradient(120% 120% at 30% 25%, #4ee49a, var(--on) 55%, var(--on-deep));
+  box-shadow: inset 0 0 0 1px rgba(47,208,126,.65);
+}
+.legend .swatch.warn {
+  background: radial-gradient(120% 120% at 30% 25%, #f6cd6a, var(--warn) 60%, #b88a1d);
+  box-shadow: inset 0 0 0 1px rgba(231,177,59,.6);
+}
+.legend .swatch.err {
+  background: radial-gradient(120% 120% at 30% 25%, #ff6a6f, var(--err) 60%, #b5292e);
+  box-shadow: inset 0 0 0 1px rgba(236,75,80,.6);
+}
+.legend .swatch.pending {
+  background: var(--cell);
+  outline: 2px dashed var(--accent);
+  outline-offset: -3px;
+}
+
 #matrix-wrap {
   overflow: auto;
   max-width: 72vw;
@@ -396,6 +482,19 @@ table#matrix {
 #matrix th.rx-dev.row-hi, #matrix th.rx-ch.row-hi,
 #matrix th.tx-ch.col-hi { color: var(--accent-2); background: var(--raised); }
 
+/* offline devices — dim their matrix headers/cells (subtle, not hidden).
+   Cells stay clickable; the crosshair/.filtered classes still apply on top. */
+#matrix th.offline { opacity: .42; }
+#matrix td.cell.offline { opacity: .42; }
+#matrix th.rx-dev.offline::after {
+  content: "offline";
+  margin-left: 6px;
+  font: 500 9px/1 var(--font-mono);
+  letter-spacing: .5px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
 /* ---------- devices ---------- */
 aside#devices {
   flex: 1;
@@ -447,6 +546,16 @@ aside#devices {
 .device:has(.role-leader) h3::before {
   background: var(--on);
   box-shadow: 0 0 8px 1px rgba(47,208,126,.7);
+}
+/* offline device — dimmed card, red status dot, neutral accent edge */
+.device.offline { opacity: .62; }
+.device.offline::before { background: var(--muted); box-shadow: none; }
+.device.offline h3::before { background: var(--err); box-shadow: 0 0 8px 1px rgba(236,75,80,.6); }
+.device h3 .offline-tag {
+  margin-left: 0;
+  color: #f0a9ac;
+  border-color: rgba(236,75,80,.4);
+  background: rgba(236,75,80,.12);
 }
 .device .meta {
   color: var(--muted);
@@ -507,6 +616,24 @@ aside#devices {
   font: 500 11px/1.3 var(--font-mono);
   letter-spacing: .3px;
   border-radius: 6px;
+}
+
+/* ---------- per-device detail view (collapsible, read-only) ---------- */
+.detail-grid {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 5px 14px;
+}
+.detail-row {
+  display: contents;
+}
+.detail-row > .meta { color: var(--muted); white-space: nowrap; }
+.detail-val {
+  font: 12px/1.4 var(--font-mono);
+  color: var(--fg-dim);
+  text-align: right;
+  word-break: break-word;
 }
 
 /* ---------- per-device configuration (collapsible) ---------- */

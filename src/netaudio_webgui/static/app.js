@@ -39,6 +39,36 @@ function subKey(rxDev, rxLabel, txDev, txLabel) {
   return [rxDev, rxLabel, txDev, txLabel].join("\u0000");
 }
 
+// ---- clock panel (derived from state) ------------------------------------
+// Leader chip + a compact follower count, both derived from state.devices by
+// clock_role. No leader -> a subtle warning chip. Re-rendered each refresh.
+function buildClock(state) {
+  const wrap = document.getElementById("clock");
+  wrap.innerHTML = "";
+  const followers = state.devices
+    .filter(d => (d.clock_role || "").toLowerCase() === "follower")
+    .map(d => d.name);
+
+  const leader = document.createElement("span");
+  if (state.leader) {
+    leader.className = "leader";
+    leader.textContent = `Clock-Leader: ${state.leader}`;
+  } else {
+    leader.className = "leader none";
+    leader.textContent = "kein Leader";
+    leader.title = "Kein Gerät meldet die Clock-Leader-Rolle";
+  }
+  wrap.appendChild(leader);
+
+  if (followers.length) {
+    const chip = document.createElement("span");
+    chip.className = "follower-chip";
+    chip.textContent = `Follower: ${followers.length}`;
+    chip.title = followers.join("\n");  // full list on hover
+    wrap.appendChild(chip);
+  }
+}
+
 function buildMatrix(state) {
   // Flatten TX (columns) and RX (rows) across all devices.
   const txCols = [];
@@ -54,6 +84,10 @@ function buildMatrix(state) {
   for (const s of state.subscriptions)
     subs.set(subKey(s.rx_device, s.rx_channel, s.tx_device, s.tx_channel), s.state);
 
+  // device name -> online flag, so offline devices can be dimmed in the matrix.
+  const online = new Map();
+  for (const d of state.devices) online.set(d.name, d.online !== false);
+
   const table = document.getElementById("matrix");
   table.innerHTML = "";
 
@@ -68,6 +102,7 @@ function buildMatrix(state) {
     const cell = th("tx-dev", txCols[i].device);
     cell.colSpan = span;
     cell.title = txCols[i].device;  // full name when the header clips it
+    cell.classList.toggle("offline", !online.get(txCols[i].device));
     cell.dataset.name = txCols[i].device;
     cell.dataset.colStart = i;      // span covers columns [colStart, colStart+span)
     cell.dataset.colEnd = i + span;
@@ -85,6 +120,7 @@ function buildMatrix(state) {
     cell.dataset.col = idx;
     cell.dataset.name = c.device;
     cell.dataset.label = c.label;
+    cell.classList.toggle("offline", !online.get(c.device));
     chRow.appendChild(cell);
   });
   table.appendChild(chRow);
@@ -92,8 +128,10 @@ function buildMatrix(state) {
   // Data rows.
   for (const r of rxRows) {
     const tr = document.createElement("tr");
+    const rxOffline = !online.get(r.device);
     const rxDev = th("rx-dev", r.device);
     rxDev.title = r.device;  // full name when the header clips it
+    rxDev.classList.toggle("offline", rxOffline);
     rxDev.dataset.name = r.device;
     // Per-device clear-all affordance (disconnect every subscribed RX channel).
     const clear = document.createElement("span");
@@ -106,10 +144,13 @@ function buildMatrix(state) {
     const rxCh = th("rx-ch", r.label);
     rxCh.dataset.name = r.device;
     rxCh.dataset.label = r.label;
+    rxCh.classList.toggle("offline", rxOffline);
     tr.appendChild(rxCh);
     txCols.forEach((c, idx) => {
       const td = document.createElement("td");
       td.className = "cell";
+      // Dim cells whose RX row or TX column device is offline.
+      if (rxOffline || !online.get(c.device)) td.classList.add("offline");
       td.dataset.col = idx;
       td.dataset.txName = c.device;
       td.dataset.txLabel = c.label;
@@ -172,12 +213,14 @@ function buildDevices(state) {
   for (const d of state.devices) {
     const div = document.createElement("div");
     div.className = "device";
+    if (d.online === false) div.classList.add("offline");
     div.dataset.name = d.name;
     // All channel labels, joined, so the filter can match a device by any of them.
     div.dataset.labels = [...d.tx_channels, ...d.rx_channels].map(c => c.label).join(" ");
     const roleClass = d.clock_role.toLowerCase() === "leader" ? "role-leader" : "";
+    const offlineTag = d.online === false ? ` <span class="meta offline-tag">offline</span>` : "";
     div.innerHTML =
-      `<h3>${escapeHtml(d.name)} <span class="meta ${roleClass}">${escapeHtml(d.clock_role)}</span></h3>` +
+      `<h3>${escapeHtml(d.name)}${offlineTag} <span class="meta ${roleClass}">${escapeHtml(d.clock_role)}</span></h3>` +
       `<div class="meta">${escapeHtml(d.ipv4)} · ${escapeHtml(d.model)} · ${escapeHtml(d.sample_rate || "?")} Hz` +
       ` · ${d.tx_channels.length} TX / ${d.rx_channels.length} RX</div>`;
     const actions = document.createElement("div");
@@ -192,6 +235,7 @@ function buildDevices(state) {
     reboot.className = "danger";
     actions.appendChild(reboot);
     div.appendChild(actions);
+    div.appendChild(buildDetails(d));
     div.appendChild(buildConfig(d));
     const channels = document.createElement("div");
     channels.className = "channels";
@@ -217,6 +261,53 @@ function buildDevices(state) {
     aside.appendChild(div);
   }
   applyFilter();
+}
+
+// ---- per-device detail view (collapsible) --------------------------------
+// Read-only key/value list of every field carried in the state. Null/undefined
+// values render as "—". Built with createElement for safe escaping.
+function buildDetails(d) {
+  const details = document.createElement("details");
+  details.className = "config details";
+  const summary = document.createElement("summary");
+  summary.textContent = "ℹ Details";
+  details.appendChild(summary);
+  const grid = document.createElement("div");
+  grid.className = "detail-grid";
+
+  const onOff = (v) => v == null ? null : (v ? "an" : "aus");
+  const rows = [
+    ["Server-Name", d.server_name],
+    ["IP", d.ipv4],
+    ["Modell", d.model],
+    ["Sample-Rate", d.sample_rate != null ? d.sample_rate + " Hz" : null],
+    ["Encoding", d.encoding != null ? d.encoding + " bit" : null],
+    ["Latenz", d.latency != null ? d.latency + " ms" : null],
+    ["AES67", onOff(d.aes67)],
+    ["Preferred-Leader", onOff(d.preferred_leader)],
+    ["Clock-Rolle", d.clock_role],
+    ["Status", d.online === false ? "offline" : "online"],
+    ["TX-Kanäle", d.tx_channels.length],
+    ["RX-Kanäle", d.rx_channels.length],
+  ];
+  for (const [label, value] of rows) grid.appendChild(detailRow(label, value));
+
+  details.appendChild(grid);
+  return details;
+}
+
+function detailRow(label, value) {
+  const row = document.createElement("div");
+  row.className = "detail-row";
+  const key = document.createElement("span");
+  key.className = "meta";
+  key.textContent = label;
+  const val = document.createElement("span");
+  val.className = "detail-val";
+  val.textContent = (value === null || value === undefined || value === "") ? "—" : String(value);
+  row.appendChild(key);
+  row.appendChild(val);
+  return row;
 }
 
 // ---- per-device configuration (collapsible) ------------------------------
@@ -498,7 +589,7 @@ async function refresh() {
     lastState = state;
     lastGoodTime = Date.now();
     document.getElementById("banner").classList.add("hidden");
-    document.getElementById("leader").textContent = state.leader ? `Clock-Leader: ${state.leader}` : "";
+    buildClock(state);
     buildMatrix(state);
     buildDevices(state);
   } else if (!lastState || !lastState.devices.length) {
