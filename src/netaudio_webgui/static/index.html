@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>netaudio — Dante Routing</title>
   <link rel="stylesheet" href="/static/style.css">
+  <script>
+    // Apply the saved theme before first paint to avoid a flash of the default.
+    try {
+      if (localStorage.getItem("netaudio-theme") === "light")
+        document.documentElement.dataset.theme = "light";
+    } catch (_) {}
+  </script>
 </head>
 <body>
   <header>
@@ -19,8 +26,13 @@
       <button id="preset-delete" class="danger" title="Gewählte Szene löschen">🗑</button>
     </div>
     <input id="search" type="search" placeholder="Suche Geräte/Kanäle…" title="Matrix & Geräte filtern ( / )" autocomplete="off">
+    <button id="export" title="Routing-Matrix als JSON exportieren">⤓ Export</button>
+    <button id="import" title="Routing-Matrix aus JSON importieren">⤒ Import</button>
+    <input id="import-file" type="file" accept="application/json" hidden>
     <button id="disconnect-all" class="danger" title="Alle aktiven Abos trennen">Alle trennen</button>
     <button id="rescan" title="Geräte & Abos neu vom Daemon einlesen (für Änderungen außerhalb der GUI)">↻ Neu einlesen</button>
+    <button id="theme-toggle" title="Theme umschalten (hell/dunkel)">🌙</button>
+    <button id="help-toggle" title="Tastenkürzel anzeigen ( ? )">?</button>
     <button id="refresh" title="Ansicht aktualisieren">⟳</button>
   </header>
   <div id="banner" class="banner hidden"></div>
@@ -40,6 +52,22 @@
     <aside id="devices"></aside>
   </main>
   <div id="updated" class="updated"></div>
+  <details id="log" class="log">
+    <summary>Protokoll</summary>
+    <div id="log-entries" class="log-entries"></div>
+  </details>
+  <div id="help-overlay" class="overlay hidden">
+    <div class="overlay-panel">
+      <h2>Tastenkürzel</h2>
+      <dl class="shortcuts">
+        <dt>/</dt><dd>Suche fokussieren</dd>
+        <dt>r</dt><dd>Aktualisieren</dd>
+        <dt>R</dt><dd>Neu einlesen</dd>
+        <dt>?</dt><dd>Hilfe</dd>
+        <dt>Esc</dt><dd>schließen</dd>
+      </dl>
+    </div>
+  </div>
   <div id="toasts"></div>
   <script src="/static/app.js"></script>
 </body>

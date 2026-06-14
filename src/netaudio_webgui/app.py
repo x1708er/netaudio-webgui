@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import time
+from collections import deque
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -36,6 +38,10 @@ class BulkSubscriptionBody(BaseModel):
 
 class NameBody(BaseModel):
     name: str
+
+
+class ImportBody(BaseModel):
+    subscriptions: list[dict]
 
 
 class ChannelNameBody(BaseModel):
@@ -126,6 +132,25 @@ def plan_apply(desired: list[dict], state: dict) -> tuple[list[dict], list[dict]
     return add, remove, skipped
 
 
+def apply_desired(client, desired: list[dict]) -> dict:
+    """Make the live routing EXACTLY match ``desired`` (label-keyed subs).
+
+    Runs ``plan_apply`` against the current state, performs the add/remove
+    client calls, and returns ``{"added", "removed", "skipped"}``. Shared by
+    the preset-apply endpoint and the matrix import endpoint.
+    """
+    add, remove, skipped = plan_apply(desired, client.get_state())
+    added = 0
+    for a in add:
+        client.add_subscription(**a)
+        added += 1
+    removed = 0
+    for r in remove:
+        client.remove_subscription(**r)
+        removed += 1
+    return {"added": added, "removed": removed, "skipped": skipped}
+
+
 def _make_client(settings: Settings):
     if settings.demo:
         from netaudio_webgui.fixtures import DemoClient
@@ -151,6 +176,19 @@ def create_app(settings: Settings | None = None, client=None, store=None) -> Fas
             raise HTTPException(status_code=401, detail="missing or invalid token")
 
     auth = [Depends(require_token)]
+
+    # In-memory session audit log of mutating requests (bounded ring buffer).
+    audit_log: deque[dict] = deque(maxlen=200)
+
+    @app.middleware("http")
+    async def _audit_middleware(request: Request, call_next):
+        response = await call_next(request)
+        if request.method in {"POST", "PUT", "DELETE"} and request.url.path.startswith("/api/"):
+            audit_log.append({
+                "ts": time.time(), "method": request.method,
+                "path": request.url.path, "status": response.status_code,
+            })
+        return response
 
     @app.exception_handler(NetaudioError)
     async def _netaudio_error_handler(_request, exc: NetaudioError):
@@ -262,16 +300,11 @@ def create_app(settings: Settings | None = None, client=None, store=None) -> Fas
             raise HTTPException(status_code=404, detail=f"preset {name!r} not found")
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
-        add, remove, skipped = plan_apply(desired, client.get_state())
-        added = 0
-        for a in add:
-            client.add_subscription(**a)
-            added += 1
-        removed = 0
-        for r in remove:
-            client.remove_subscription(**r)
-            removed += 1
-        return {"ok": True, "added": added, "removed": removed, "skipped": skipped}
+        return {"ok": True, **apply_desired(client, desired)}
+
+    @app.post("/api/subscriptions/import", dependencies=auth)
+    def api_import_subscriptions(body: ImportBody):
+        return {"ok": True, **apply_desired(client, body.subscriptions)}
 
     @app.delete("/api/presets/{name}", dependencies=auth)
     def api_delete_preset(name: str):
@@ -282,6 +315,10 @@ def create_app(settings: Settings | None = None, client=None, store=None) -> Fas
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         return {"ok": True}
+
+    @app.get("/api/log", dependencies=auth)
+    def api_log():
+        return {"log": list(reversed(audit_log))}
 
     @app.get("/")
     def index():

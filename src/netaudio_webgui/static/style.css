@@ -42,6 +42,40 @@
   --shadow:    0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
 }
 
+/* light theme — clean console look: light greys, dark text. Only overrides the
+   colour variables; geometry/typography stay shared with the default (dark). */
+:root[data-theme="light"] {
+  --bg:        #eef1f5;
+  --bg-2:      #f5f7fa;
+  --panel:     #ffffff;
+  --panel-2:   #eef1f6;
+  --raised:    #e2e7ee;
+  --cell:      #f6f8fb;
+  --cell-alt:  #eef1f6;
+
+  --line:      #c8d0db;
+  --line-soft: #dde3ea;
+
+  --fg:        #1a2230;
+  --fg-dim:    #455061;
+  --muted:     #76808f;
+
+  --accent:    #2f6fd0;
+  --accent-2:  #245bb0;
+  --on:        #1c9c5c;
+  --on-deep:   #157a47;
+  --err:       #d23035;
+  --warn:      #b8860b;
+
+  --shadow:    0 1px 2px rgba(20,30,50,.10), 0 8px 24px -14px rgba(20,30,50,.30);
+}
+:root[data-theme="light"] body {
+  background:
+    radial-gradient(1100px 520px at 78% -10%, rgba(47,111,208,.08), transparent 60%),
+    radial-gradient(900px 480px at 8% 8%, rgba(28,156,92,.05), transparent 55%),
+    linear-gradient(180deg, var(--bg-2), var(--bg) 70%);
+}
+
 * { box-sizing: border-box; }
 
 html { scrollbar-color: var(--raised) transparent; }
@@ -769,6 +803,114 @@ aside#devices {
 .toast.ok {
   border-left-color: var(--on);
   box-shadow: var(--shadow), 0 0 20px -12px rgba(47,208,126,.7);
+}
+
+/* ---------- keyboard-help overlay ---------- */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,.5);
+  backdrop-filter: blur(3px);
+}
+.overlay-panel {
+  min-width: 280px;
+  max-width: 90vw;
+  padding: 18px 22px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  box-shadow: var(--shadow);
+}
+.overlay-panel h2 {
+  margin: 0 0 12px;
+  font: 600 12px/1 var(--font-mono);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--accent-2);
+}
+.shortcuts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 16px;
+}
+.shortcuts dt {
+  font: 600 12px/1.4 var(--font-mono);
+  color: var(--fg);
+  text-align: center;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--cell);
+}
+.shortcuts dd { margin: 0; color: var(--fg-dim); align-self: center; }
+
+/* ---------- session audit log ---------- */
+.log {
+  position: fixed;
+  right: 18px;
+  bottom: 64px;
+  z-index: 55;
+  max-width: 420px;
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: .3px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(15,19,26,.85);
+  backdrop-filter: blur(6px);
+}
+:root[data-theme="light"] .log { background: rgba(255,255,255,.9); }
+.log > summary {
+  cursor: pointer;
+  list-style: none;
+  color: var(--muted);
+  user-select: none;
+  padding: 7px 12px;
+  transition: color .15s;
+}
+.log > summary::-webkit-details-marker { display: none; }
+.log > summary:hover,
+.log[open] > summary { color: var(--accent-2); }
+.log-entries {
+  max-height: 240px;
+  overflow: auto;
+  padding: 4px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--fg-dim);
+}
+.log-row {
+  display: grid;
+  grid-template-columns: auto 46px 1fr auto;
+  gap: 8px;
+  align-items: baseline;
+}
+.log-row.err .log-status { color: var(--err); }
+.log-time { color: var(--muted); }
+.log-method { color: var(--accent-2); }
+.log-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log-status { color: var(--on); }
+
+/* ---------- mobile layout ---------- */
+@media (max-width: 820px) {
+  header { flex-wrap: wrap; }
+  header button,
+  header #search,
+  .presets select#preset-select { min-height: 38px; }
+  #search { min-width: 140px; }
+
+  main { flex-direction: column; }
+  #matrix-col { max-width: 100%; }
+  #matrix-wrap { max-width: 100%; }
+  .legend { max-width: 100%; }
+  aside#devices { width: 100%; }
+
+  .log { right: 12px; left: 12px; max-width: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -674,6 +674,94 @@ async function deletePreset() {
   } catch (e) { toast(e.message, "error"); }
 }
 
+// ---- config export / import ----------------------------------------------
+// Export downloads the live matrix as JSON; import POSTs it and applies it like
+// a preset (server-side diff). Reuses the Phase-2 apply logic via apply_desired.
+function exportMatrix() {
+  if (!lastState) { toast("kein Zustand zum Exportieren", "error"); return; }
+  const subscriptions = lastState.subscriptions.map(s => ({
+    rx_device: s.rx_device, rx_channel: s.rx_channel,
+    tx_device: s.tx_device, tx_channel: s.tx_channel,
+  }));
+  const blob = new Blob([JSON.stringify({ subscriptions }, null, 2)],
+    { type: "application/json" });
+  const now = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  const stamp = `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}`;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `netaudio-routing-${stamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(a.href);
+  toast(`exportiert: ${subscriptions.length} Routen`, "ok");
+}
+
+async function importMatrix(file) {
+  let data;
+  try {
+    data = JSON.parse(await file.text());
+  } catch (e) { toast("ungültige JSON-Datei", "error"); return; }
+  if (!data || !Array.isArray(data.subscriptions)) {
+    toast("ungültiges Format: subscriptions-Liste fehlt", "error");
+    return;
+  }
+  if (!confirm(`Import anwenden? Routing wird exakt angeglichen (${data.subscriptions.length} Routen).`)) return;
+  try {
+    const res = await api("POST", "/api/subscriptions/import", { subscriptions: data.subscriptions });
+    toast(`Import: +${res.added} / -${res.removed} / übersprungen ${res.skipped}`, "ok");
+  } catch (e) { toast(e.message, "error"); }
+  refresh();
+}
+
+// ---- audit log (session, in-memory on the server) ------------------------
+// Collapsible view; fetches /api/log on open and renders newest-first.
+async function loadLog() {
+  const wrap = document.getElementById("log-entries");
+  let log = [];
+  try {
+    log = (await api("GET", "/api/log")).log || [];
+  } catch (e) { return; }
+  wrap.innerHTML = "";
+  if (!log.length) { wrap.textContent = "— noch keine Aktionen —"; return; }
+  for (const e of log) {
+    const row = document.createElement("div");
+    row.className = "log-row" + (e.status >= 400 ? " err" : "");
+    const t = new Date(e.ts * 1000).toLocaleTimeString("de-DE");
+    row.innerHTML =
+      `<span class="log-time">${escapeHtml(t)}</span>` +
+      `<span class="log-method">${escapeHtml(e.method)}</span>` +
+      `<span class="log-path">${escapeHtml(e.path)}</span>` +
+      `<span class="log-status">${escapeHtml(e.status)}</span>`;
+    wrap.appendChild(row);
+  }
+}
+
+// ---- theme & help overlay ------------------------------------------------
+function applyTheme(theme) {
+  const btn = document.getElementById("theme-toggle");
+  if (theme === "light") {
+    document.documentElement.dataset.theme = "light";
+    btn.textContent = "☀";
+  } else {
+    delete document.documentElement.dataset.theme;
+    btn.textContent = "🌙";
+  }
+}
+
+function toggleTheme() {
+  const light = document.documentElement.dataset.theme !== "light";
+  try { localStorage.setItem("netaudio-theme", light ? "light" : "dark"); } catch (_) {}
+  applyTheme(light ? "light" : "dark");
+}
+
+function toggleHelp(force) {
+  const ov = document.getElementById("help-overlay");
+  const show = force === undefined ? ov.classList.contains("hidden") : force;
+  ov.classList.toggle("hidden", !show);
+}
+
 // Crosshair hover: light up the hovered cell's whole row and column (patchbay
 // feel). One delegated listener on the table survives every re-render.
 function clearCrosshair() {
@@ -703,6 +791,24 @@ document.getElementById("disconnect-all").onclick = disconnectAll;
 document.getElementById("preset-save").onclick = savePreset;
 document.getElementById("preset-apply").onclick = applyPreset;
 document.getElementById("preset-delete").onclick = deletePreset;
+document.getElementById("export").onclick = exportMatrix;
+document.getElementById("theme-toggle").onclick = toggleTheme;
+document.getElementById("help-toggle").onclick = () => toggleHelp();
+
+// Import: the button opens a hidden file picker; picking a file applies it.
+const importFile = document.getElementById("import-file");
+document.getElementById("import").onclick = () => importFile.click();
+importFile.addEventListener("change", () => {
+  if (importFile.files.length) importMatrix(importFile.files[0]);
+  importFile.value = "";  // allow re-picking the same file
+});
+
+// Audit log: (re)fetch its entries whenever the panel is opened.
+const logEl = document.getElementById("log");
+logEl.addEventListener("toggle", () => { if (logEl.open) loadLog(); });
+
+// Sync the theme button glyph with the (pre-paint) applied theme.
+applyTheme(document.documentElement.dataset.theme === "light" ? "light" : "dark");
 
 // Live search: store the query and re-apply the filter (no re-render needed).
 const searchInput = document.getElementById("search");
@@ -710,13 +816,19 @@ searchInput.addEventListener("input", () => {
   filterQuery = searchInput.value.trim().toLowerCase();
   applyFilter();
 });
-// "/" focuses the search box (unless already typing in a field).
+// Keyboard shortcuts. All ignored while typing in a field, except Esc.
 document.addEventListener("keydown", (e) => {
-  if (e.key === "/" && document.activeElement !== searchInput
-      && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) {
-    e.preventDefault();
-    searchInput.focus();
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+  if (e.key === "Escape") {
+    toggleHelp(false);
+    if (document.activeElement === searchInput) searchInput.blur();
+    return;
   }
+  if (typing || e.altKey || e.ctrlKey || e.metaKey) return;
+  if (e.key === "/") { e.preventDefault(); searchInput.focus(); }
+  else if (e.key === "r") { e.preventDefault(); refresh(); }
+  else if (e.key === "R") { e.preventDefault(); rescan(); }
+  else if (e.key === "?") { e.preventDefault(); toggleHelp(); }
 });
 
 refresh();

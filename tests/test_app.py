@@ -406,3 +406,68 @@ def test_save_empty_name_400(tmp_path):
     app, _, _ = _preset_app(tmp_path)
     client = TestClient(app)
     assert client.post("/api/presets", json={"name": "   "}).status_code == 400
+
+
+# ---- config export / import ---------------------------------------------
+
+
+def test_import_subscriptions_records_add_and_remove(tmp_path):
+    # Current live state: A32/02 <- Inferno/R. Imported: A32/01 <- Inferno/L.
+    current = [{"rx_device": "A32", "rx_channel": "02", "tx_device": "Inferno", "tx_channel": "R",
+                "state": "connected", "label": "Connected"}]
+    app, fake, _ = _preset_app(tmp_path, current)
+    client = TestClient(app)
+    resp = client.post("/api/subscriptions/import", json={"subscriptions": [
+        {"rx_device": "A32", "rx_channel": "01", "tx_device": "Inferno", "tx_channel": "L"}
+    ]})
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "added": 1, "removed": 1, "skipped": 0}
+    assert ("add", {"tx_device": "Inferno", "tx_number": 1,
+                    "rx_device": "A32", "rx_number": 1}) in fake.calls
+    assert ("remove", {"rx_device": "A32", "rx_number": 2}) in fake.calls
+
+
+def test_import_subscriptions_skips_unresolvable(tmp_path):
+    app, fake, _ = _preset_app(tmp_path, [])
+    client = TestClient(app)
+    resp = client.post("/api/subscriptions/import", json={"subscriptions": [
+        {"rx_device": "Ghost", "rx_channel": "01", "tx_device": "Inferno", "tx_channel": "L"}
+    ]})
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "added": 0, "removed": 0, "skipped": 1}
+    assert fake.calls == []
+
+
+# ---- audit log -----------------------------------------------------------
+
+
+def test_log_records_mutation_and_skips_get():
+    app, _ = _app()
+    client = TestClient(app)
+    # A successful mutation should be logged.
+    assert client.post("/api/subscription", json={
+        "tx_device": "Inferno", "tx_number": 1, "rx_device": "A32", "rx_number": 2}).status_code == 200
+    # A GET must NOT be logged.
+    assert client.get("/api/state").status_code == 200
+    entries = client.get("/api/log").json()["log"]
+    posts = [e for e in entries if e["method"] == "POST" and e["path"] == "/api/subscription"]
+    assert len(posts) == 1
+    assert posts[0]["status"] == 200
+    assert "ts" in posts[0]
+    assert not any(e["method"] == "GET" for e in entries)
+
+
+def test_log_records_errored_mutation_as_502():
+    app, fake = _app()
+
+    def boom(**kwargs):
+        from netaudio_webgui.netaudio_client import NetaudioError
+        raise NetaudioError("Error: RX device not found.")
+
+    fake.add_subscription = boom
+    client = TestClient(app)
+    assert client.post("/api/subscription", json={
+        "tx_device": "I", "tx_number": 1, "rx_device": "X", "rx_number": 1}).status_code == 502
+    entries = client.get("/api/log").json()["log"]
+    posts = [e for e in entries if e["path"] == "/api/subscription"]
+    assert posts and posts[0]["status"] == 502
