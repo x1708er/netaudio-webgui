@@ -66,6 +66,7 @@ function buildMatrix(state) {
     while (i + span < txCols.length && txCols[i + span].device === txCols[i].device) span++;
     const cell = th("tx-dev", txCols[i].device);
     cell.colSpan = span;
+    cell.title = txCols[i].device;  // full name when the header clips it
     devRow.appendChild(cell);
     i += span;
   }
@@ -81,7 +82,9 @@ function buildMatrix(state) {
   // Data rows.
   for (const r of rxRows) {
     const tr = document.createElement("tr");
-    tr.appendChild(th("rx-dev", r.device));
+    const rxDev = th("rx-dev", r.device);
+    rxDev.title = r.device;  // full name when the header clips it
+    tr.appendChild(rxDev);
     tr.appendChild(th("rx-ch", r.label));
     for (const c of txCols) {
       const td = document.createElement("td");
@@ -268,6 +271,29 @@ async function rescan() {
   }
   refresh();
 }
+
+// Crosshair hover: light up the hovered cell's whole row and column (patchbay
+// feel). One delegated listener on the table survives every re-render.
+function clearCrosshair() {
+  for (const el of document.querySelectorAll("#matrix .row-hi, #matrix .col-hi"))
+    el.classList.remove("row-hi", "col-hi");
+}
+(() => {
+  const m = document.getElementById("matrix");
+  m.addEventListener("mouseover", (e) => {
+    const td = e.target.closest("td.cell");
+    if (!td) return;
+    const idx = [...td.parentElement.children].indexOf(td);
+    clearCrosshair();
+    for (const c of td.parentElement.children) c.classList.add("row-hi");
+    // rows[0] is the spanning device-name row (colspans don't align); start at 1.
+    for (let i = 1; i < m.rows.length; i++) {
+      const cell = m.rows[i].children[idx];
+      if (cell) cell.classList.add("col-hi");
+    }
+  });
+  m.addEventListener("mouseleave", clearCrosshair);
+})();
 
 document.getElementById("rescan").onclick = rescan;
 document.getElementById("refresh").onclick = refresh;
