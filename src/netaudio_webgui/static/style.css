@@ -285,7 +285,7 @@ header button.danger:hover {
   border: 1px solid rgba(231,177,59,.35);
   box-shadow: var(--shadow);
 }
-.hidden { display: none; }
+.hidden { display: none !important; }  /* utility: must beat component display (e.g. .overlay) */
 
 /* ---------- layout ---------- */
 main {
