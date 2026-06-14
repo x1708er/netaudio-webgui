@@ -98,6 +98,19 @@ class DemoClient:
             if not (s["rx_device"] == rx_device and s["rx_channel"] == rx_label)
         ]
 
+    def add_bulk_subscription(self, tx_device: str, rx_device: str,
+                              count: int = 0, offset_tx: int = 0, offset_rx: int = 0) -> None:
+        tx = self._find_device(tx_device)
+        rx = self._find_device(rx_device)
+        pairs = min(len(tx["tx_channels"]) - offset_tx, len(rx["rx_channels"]) - offset_rx)
+        if count > 0:
+            pairs = min(pairs, count)
+        for i in range(max(pairs, 0)):
+            self.add_subscription(
+                tx_device=tx_device, tx_number=tx["tx_channels"][offset_tx + i]["number"],
+                rx_device=rx_device, rx_number=rx["rx_channels"][offset_rx + i]["number"],
+            )
+
     def set_device_name(self, host: str, new_name: str) -> None:
         self._find_device_by_host(host)["name"] = new_name
 

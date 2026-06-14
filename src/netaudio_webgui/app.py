@@ -25,6 +25,14 @@ class RemoveBody(BaseModel):
     rx_number: int
 
 
+class BulkSubscriptionBody(BaseModel):
+    tx_device: str
+    rx_device: str
+    count: int = 0
+    offset_tx: int = 0
+    offset_rx: int = 0
+
+
 class NameBody(BaseModel):
     name: str
 
@@ -86,6 +94,14 @@ def create_app(settings: Settings | None = None, client=None) -> FastAPI:
     @app.delete("/api/subscription", dependencies=auth)
     def api_remove_subscription(body: RemoveBody):
         client.remove_subscription(rx_device=body.rx_device, rx_number=body.rx_number)
+        return {"ok": True}
+
+    @app.post("/api/subscription/bulk", dependencies=auth)
+    def api_add_bulk_subscription(body: BulkSubscriptionBody):
+        client.add_bulk_subscription(
+            tx_device=body.tx_device, rx_device=body.rx_device,
+            count=body.count, offset_tx=body.offset_tx, offset_rx=body.offset_rx,
+        )
         return {"ok": True}
 
     @app.put("/api/device/{host}/name", dependencies=auth)

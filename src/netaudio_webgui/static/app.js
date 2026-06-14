@@ -5,6 +5,7 @@ let lastState = null;            // last rendered state (for instant re-render)
 let lastGoodTime = null;         // timestamp of the last poll that returned devices
 const pending = new Map();       // cellKey -> "add" | "remove" (optimistic, awaiting confirm)
 let mutationChain = Promise.resolve();  // serialize mutations (each triggers a daemon restart)
+let filterQuery = "";            // live search filter (lower-cased), re-applied after every render
 
 function headers(extra) {
   const h = Object.assign({}, extra || {});
@@ -67,6 +68,9 @@ function buildMatrix(state) {
     const cell = th("tx-dev", txCols[i].device);
     cell.colSpan = span;
     cell.title = txCols[i].device;  // full name when the header clips it
+    cell.dataset.name = txCols[i].device;
+    cell.dataset.colStart = i;      // span covers columns [colStart, colStart+span)
+    cell.dataset.colEnd = i + span;
     devRow.appendChild(cell);
     i += span;
   }
@@ -76,7 +80,13 @@ function buildMatrix(state) {
   const chRow = document.createElement("tr");
   chRow.appendChild(th("corner", ""));
   chRow.appendChild(th("corner", ""));
-  for (const c of txCols) chRow.appendChild(th("tx-ch", c.label));
+  txCols.forEach((c, idx) => {
+    const cell = th("tx-ch", c.label);
+    cell.dataset.col = idx;
+    cell.dataset.name = c.device;
+    cell.dataset.label = c.label;
+    chRow.appendChild(cell);
+  });
   table.appendChild(chRow);
 
   // Data rows.
@@ -84,11 +94,27 @@ function buildMatrix(state) {
     const tr = document.createElement("tr");
     const rxDev = th("rx-dev", r.device);
     rxDev.title = r.device;  // full name when the header clips it
+    rxDev.dataset.name = r.device;
+    // Per-device clear-all affordance (disconnect every subscribed RX channel).
+    const clear = document.createElement("span");
+    clear.className = "rx-clear";
+    clear.textContent = "✕";
+    clear.title = `Alle Abos von ${r.device} trennen`;
+    clear.onclick = (e) => { e.stopPropagation(); disconnectDevice(r.device); };
+    rxDev.appendChild(clear);
     tr.appendChild(rxDev);
-    tr.appendChild(th("rx-ch", r.label));
-    for (const c of txCols) {
+    const rxCh = th("rx-ch", r.label);
+    rxCh.dataset.name = r.device;
+    rxCh.dataset.label = r.label;
+    tr.appendChild(rxCh);
+    txCols.forEach((c, idx) => {
       const td = document.createElement("td");
       td.className = "cell";
+      td.dataset.col = idx;
+      td.dataset.txName = c.device;
+      td.dataset.txLabel = c.label;
+      td.dataset.rxName = r.device;
+      td.dataset.rxLabel = r.label;
       const key = subKey(r.device, r.label, c.device, c.label);
       const state = subs.get(key);
       const opt = pending.get(key);
@@ -102,9 +128,10 @@ function buildMatrix(state) {
       td.title = `${c.label}@${c.device} → ${r.label}@${r.device}`;
       td.onclick = () => onCellClick(r, c, !!state);
       tr.appendChild(td);
-    }
+    });
     table.appendChild(tr);
   }
+  applyFilter();
 }
 
 function th(cls, text) {
@@ -145,6 +172,9 @@ function buildDevices(state) {
   for (const d of state.devices) {
     const div = document.createElement("div");
     div.className = "device";
+    div.dataset.name = d.name;
+    // All channel labels, joined, so the filter can match a device by any of them.
+    div.dataset.labels = [...d.tx_channels, ...d.rx_channels].map(c => c.label).join(" ");
     const roleClass = d.clock_role.toLowerCase() === "leader" ? "role-leader" : "";
     div.innerHTML =
       `<h3>${escapeHtml(d.name)} <span class="meta ${roleClass}">${escapeHtml(d.clock_role)}</span></h3>` +
@@ -153,6 +183,7 @@ function buildDevices(state) {
     const actions = document.createElement("div");
     actions.className = "actions";
     actions.appendChild(button("Umbenennen", () => renameDevice(d)));
+    actions.appendChild(button("⇄ Von Gerät…", () => bulkRouteInto(d)));
     actions.appendChild(button("Identify", () => doAction(`/api/device/${encodeURIComponent(d.ipv4)}/identify`, `Identify: ${d.name}`)));
     const reboot = button("Reboot", () => {
       if (confirm(`${d.name} wirklich neu starten?`))
@@ -182,6 +213,7 @@ function buildDevices(state) {
     div.appendChild(channels);
     aside.appendChild(div);
   }
+  applyFilter();
 }
 
 function button(label, onclick) {
@@ -189,6 +221,125 @@ function button(label, onclick) {
   b.textContent = label;
   b.onclick = onclick;
   return b;
+}
+
+// ---- search / filter (frontend only) -------------------------------------
+// A device matches the query if its name OR any of its channel labels match.
+// Matrix: hide RX rows and TX columns whose device AND channel both fail to
+// match (matching channels of a matching device stay visible). Device panel:
+// hide cards whose name and all channel labels fail. Empty query = all visible.
+function matchesText(q, ...parts) {
+  return parts.some(p => (p || "").toLowerCase().includes(q));
+}
+
+function applyFilter() {
+  const q = filterQuery;
+  // --- device panel ---
+  for (const card of document.querySelectorAll("#devices .device")) {
+    const show = !q || matchesText(q, card.dataset.name, card.dataset.labels);
+    card.classList.toggle("filtered", !show);
+  }
+  // --- matrix ---
+  const table = document.getElementById("matrix");
+  if (!q) {
+    for (const el of table.querySelectorAll(".filtered")) el.classList.remove("filtered");
+    return;
+  }
+  // Which RX rows / TX columns survive. A row/column survives if its device name
+  // matches OR its own channel label matches.
+  const colVisible = new Map();  // col index -> bool
+  for (const ch of table.querySelectorAll("th.tx-ch")) {
+    colVisible.set(ch.dataset.col, matchesText(q, ch.dataset.name, ch.dataset.label));
+  }
+  for (const ch of table.querySelectorAll("th.tx-ch")) {
+    ch.classList.toggle("filtered", !colVisible.get(ch.dataset.col));
+  }
+  // TX device header spans columns; hide it only if all its columns are hidden.
+  for (const dev of table.querySelectorAll("th.tx-dev")) {
+    let anyVisible = false;
+    for (let c = +dev.dataset.colStart; c < +dev.dataset.colEnd; c++)
+      if (colVisible.get(String(c))) { anyVisible = true; break; }
+    dev.classList.toggle("filtered", !anyVisible);
+  }
+  // Data rows + their cells.
+  for (const tr of table.querySelectorAll("tr")) {
+    const rxDev = tr.querySelector("th.rx-dev");
+    if (!rxDev) continue;  // header rows handled above
+    const rxCh = tr.querySelector("th.rx-ch");
+    const rowVisible = matchesText(q, rxDev.dataset.name, rxCh && rxCh.dataset.label);
+    tr.classList.toggle("filtered", !rowVisible);
+    for (const td of tr.querySelectorAll("td.cell"))
+      td.classList.toggle("filtered", !colVisible.get(td.dataset.col));
+  }
+}
+
+// ---- matrix clean-up -----------------------------------------------------
+// Disconnect every subscribed RX channel of one device (header ✕).
+function disconnectDevice(rxDevice) {
+  if (!lastState) return;
+  const dev = lastState.devices.find(d => d.name === rxDevice);
+  if (!dev) return;
+  const subbed = lastState.subscriptions.filter(s => s.rx_device === rxDevice);
+  if (!subbed.length) { toast(`keine Abos auf ${rxDevice}`, "ok"); return; }
+  if (!confirm(`Alle ${subbed.length} Abos von ${rxDevice} trennen?`)) return;
+  for (const s of subbed) {
+    const ch = dev.rx_channels.find(c => c.label === s.rx_channel);
+    if (ch) removeSubscription(rxDevice, ch.label, ch.number);
+  }
+}
+
+// Disconnect every subscription in the current state ("Alle trennen").
+function disconnectAll() {
+  if (!lastState) return;
+  const subs = lastState.subscriptions;
+  if (!subs.length) { toast("keine aktiven Abos", "ok"); return; }
+  if (!confirm(`Wirklich ALLE ${subs.length} Abos trennen?`)) return;
+  for (const s of subs) {
+    const dev = lastState.devices.find(d => d.name === s.rx_device);
+    if (!dev) continue;
+    const ch = dev.rx_channels.find(c => c.label === s.rx_channel);
+    if (ch) removeSubscription(s.rx_device, ch.label, ch.number);
+  }
+}
+
+// Shared optimistic DELETE of a single subscription by rx device + channel.
+function removeSubscription(rxDevice, rxLabel, rxNumber) {
+  const keys = lastState.subscriptions
+    .filter(s => s.rx_device === rxDevice && s.rx_channel === rxLabel)
+    .map(s => subKey(s.rx_device, s.rx_channel, s.tx_device, s.tx_channel));
+  for (const k of keys) pending.set(k, "remove");
+  if (lastState) buildMatrix(lastState);
+  mutationChain = mutationChain.then(async () => {
+    try {
+      await api("DELETE", "/api/subscription", { rx_device: rxDevice, rx_number: rxNumber });
+      toast(`getrennt: ${rxLabel}@${rxDevice}`, "ok");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      for (const k of keys) pending.delete(k);
+      await refresh();
+    }
+  });
+}
+
+// ---- bulk routing (device -> device) -------------------------------------
+// Route ALL channels of a chosen TX device into THIS device as RX (count=0).
+async function bulkRouteInto(rxDev) {
+  if (!lastState) return;
+  const others = lastState.devices.filter(d => d.name !== rxDev.name && d.tx_channels.length);
+  if (!others.length) { toast("kein anderes Gerät mit TX-Kanälen", "error"); return; }
+  const names = others.map(d => d.name);
+  const choice = prompt(
+    `Alle Kanäle welches Geräts nach ${rxDev.name} routen?\n\n` + names.join("\n"),
+    names[0]);
+  if (!choice) return;
+  const tx = others.find(d => d.name === choice.trim());
+  if (!tx) { toast(`unbekanntes Gerät: ${choice}`, "error"); return; }
+  try {
+    await api("POST", "/api/subscription/bulk", { tx_device: tx.name, rx_device: rxDev.name });
+    toast(`geroutet: ${tx.name} → ${rxDev.name}`, "ok");
+  } catch (e) { toast(e.message, "error"); }
+  refresh();
 }
 
 async function renameDevice(d) {
@@ -297,6 +448,23 @@ function clearCrosshair() {
 
 document.getElementById("rescan").onclick = rescan;
 document.getElementById("refresh").onclick = refresh;
+document.getElementById("disconnect-all").onclick = disconnectAll;
+
+// Live search: store the query and re-apply the filter (no re-render needed).
+const searchInput = document.getElementById("search");
+searchInput.addEventListener("input", () => {
+  filterQuery = searchInput.value.trim().toLowerCase();
+  applyFilter();
+});
+// "/" focuses the search box (unless already typing in a field).
+document.addEventListener("keydown", (e) => {
+  if (e.key === "/" && document.activeElement !== searchInput
+      && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) {
+    e.preventDefault();
+    searchInput.focus();
+  }
+});
+
 refresh();
 pollTimer = setInterval(refresh, POLL_MS);
 setInterval(updateAge, 1000);  // tick the "last updated" age even between polls

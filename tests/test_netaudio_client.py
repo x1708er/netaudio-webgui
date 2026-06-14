@@ -25,6 +25,25 @@ def test_remove_subscription_argv():
     assert argv == ["netaudio", "subscription", "remove", "--rx", "2@A32"]
 
 
+def test_bulk_subscription_argv():
+    argv = nc.build_bulk_subscription_argv("netaudio", "Inferno", "A32",
+                                           count=2, offset_tx=1, offset_rx=3)
+    assert argv == [
+        "netaudio", "subscription", "add",
+        "--tx", "Inferno", "--rx", "A32",
+        "--count", "2", "--offset-tx", "1", "--offset-rx", "3",
+    ]
+
+
+def test_bulk_subscription_argv_defaults():
+    argv = nc.build_bulk_subscription_argv("netaudio", "Inferno", "A32")
+    assert argv == [
+        "netaudio", "subscription", "add",
+        "--tx", "Inferno", "--rx", "A32",
+        "--count", "0", "--offset-tx", "0", "--offset-rx", "0",
+    ]
+
+
 def test_device_name_argv():
     argv = nc.build_device_name_argv("netaudio", "192.168.178.50", "NewName")
     assert argv == ["netaudio", "--host", "192.168.178.50", "device", "name", "NewName"]

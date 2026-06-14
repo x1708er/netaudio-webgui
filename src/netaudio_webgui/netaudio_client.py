@@ -25,6 +25,18 @@ def build_remove_subscription_argv(netaudio_bin: str, rx_device: str, rx_number:
     return [netaudio_bin, "subscription", "remove", "--rx", f"{rx_number}@{rx_device}"]
 
 
+def build_bulk_subscription_argv(
+    netaudio_bin: str, tx_device: str, rx_device: str,
+    count: int = 0, offset_tx: int = 0, offset_rx: int = 0,
+) -> list[str]:
+    # Bulk uses BARE device names for --tx/--rx (unlike the single n@device form).
+    return [
+        netaudio_bin, "subscription", "add",
+        "--tx", tx_device, "--rx", rx_device,
+        "--count", str(count), "--offset-tx", str(offset_tx), "--offset-rx", str(offset_rx),
+    ]
+
+
 def build_device_name_argv(netaudio_bin: str, host: str, new_name: str) -> list[str]:
     return [netaudio_bin, "--host", host, "device", "name", new_name]
 
@@ -270,6 +282,12 @@ class NetaudioClient:
 
     def remove_subscription(self, rx_device: str, rx_number: int) -> None:
         self._run_checked(build_remove_subscription_argv(self.netaudio_bin, rx_device, rx_number))
+        self._after_change(rx_device)
+
+    def add_bulk_subscription(self, tx_device: str, rx_device: str,
+                              count: int = 0, offset_tx: int = 0, offset_rx: int = 0) -> None:
+        self._run_checked(build_bulk_subscription_argv(
+            self.netaudio_bin, tx_device, rx_device, count, offset_tx, offset_rx))
         self._after_change(rx_device)
 
     def set_device_name(self, host: str, new_name: str) -> None:

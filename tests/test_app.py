@@ -22,6 +22,9 @@ class FakeClient:
     def remove_subscription(self, **kwargs):
         self.calls.append(("remove", kwargs))
 
+    def add_bulk_subscription(self, **kwargs):
+        self.calls.append(("bulk", kwargs))
+
     def set_device_name(self, host, new_name):
         self.calls.append(("name", host, new_name))
 
@@ -102,6 +105,27 @@ def test_remove_subscription_calls_client():
                           json={"rx_device": "A32", "rx_number": 2})
     assert resp.status_code == 200
     assert fake.calls[0] == ("remove", {"rx_device": "A32", "rx_number": 2})
+
+
+def test_bulk_subscription_calls_client():
+    app, fake = _app()
+    client = TestClient(app)
+    resp = client.post("/api/subscription/bulk", json={
+        "tx_device": "Inferno", "rx_device": "A32",
+        "count": 2, "offset_tx": 1, "offset_rx": 0})
+    assert resp.status_code == 200
+    assert fake.calls[0] == ("bulk", {"tx_device": "Inferno", "rx_device": "A32",
+                                      "count": 2, "offset_tx": 1, "offset_rx": 0})
+
+
+def test_bulk_subscription_defaults():
+    app, fake = _app()
+    client = TestClient(app)
+    resp = client.post("/api/subscription/bulk", json={
+        "tx_device": "Inferno", "rx_device": "A32"})
+    assert resp.status_code == 200
+    assert fake.calls[0] == ("bulk", {"tx_device": "Inferno", "rx_device": "A32",
+                                      "count": 0, "offset_tx": 0, "offset_rx": 0})
 
 
 def test_identify_calls_client():

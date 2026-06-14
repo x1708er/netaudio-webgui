@@ -132,8 +132,61 @@ header button:active,
 .device button:active { transform: translateY(1px); }
 header button:disabled { opacity: .5; cursor: progress; }
 
-#rescan { margin-left: auto; }
 #refresh { padding: 7px 11px; font-size: 14px; line-height: 1; }
+
+/* header search — pushes itself and the trailing buttons to the right edge */
+#search {
+  margin-left: auto;
+  min-width: 200px;
+  font: 500 12px/1 var(--font-sans);
+  color: var(--fg);
+  background: var(--cell);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 12px;
+  transition: border-color .15s, box-shadow .15s;
+}
+#search::placeholder { color: var(--muted); }
+#search:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(79,155,232,.25);
+}
+
+/* danger button in the header (Alle trennen) */
+header button.danger {
+  color: #f0a9ac;
+  border-color: rgba(236,75,80,.4);
+  background: linear-gradient(180deg, rgba(236,75,80,.12), rgba(236,75,80,.05));
+}
+header button.danger:hover {
+  color: #fff;
+  border-color: var(--err);
+  box-shadow: 0 0 0 1px rgba(236,75,80,.3), 0 6px 16px -10px rgba(236,75,80,.7);
+}
+
+/* RX device-header clear-all affordance */
+#matrix th.rx-dev { padding-right: 26px; }  /* room for the ✕ */
+.rx-clear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px; height: 16px;
+  line-height: 16px;
+  text-align: center;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .15s, color .15s, background .15s;
+}
+#matrix th.rx-dev:hover .rx-clear { opacity: 1; }
+.rx-clear:hover { color: #fff; background: var(--err); }
+
+/* filter — hide non-matching matrix rows/cols & device cards */
+#matrix .filtered, .device.filtered { display: none; }
 
 /* ---------- banner ---------- */
 .banner {
