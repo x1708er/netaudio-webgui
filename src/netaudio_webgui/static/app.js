@@ -846,7 +846,7 @@ document.addEventListener("keydown", (e) => {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
   if (e.key === "Escape") {
     toggleHelp(false);
-    document.getElementById("zone-editor").classList.add("hidden");
+    closeZoneEditor();
     if (document.activeElement === searchInput) searchInput.blur();
     return;
   }
@@ -1124,7 +1124,7 @@ function sceneChecklist(selected, choices, onChange) {
 }
 
 function rxChecklist(selected, choices, onChange) {
-  const key = (r) => r.device + "" + r.channel;
+  const key = (r) => r.device + "\u0000" + r.channel;
   const set = new Set(selected.map(key));
   const box = document.createElement("div");
   box.className = "editor-checklist";
