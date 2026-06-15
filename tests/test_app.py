@@ -406,6 +406,27 @@ def test_apply_preset_records_add_and_remove(tmp_path):
     assert ("remove", {"rx_device": "A32", "rx_number": 2}) in fake.calls
 
 
+def test_apply_preset_repoint_keeps_new_subscription(tmp_path):
+    # Regression: re-pointing an already-subscribed RX channel to a different TX
+    # must NOT remove that channel. Current: A32/01 <- Inferno/R. Desired:
+    # A32/01 <- Inferno/L (same RX channel, different TX). Since Dante allows one
+    # subscription per RX channel, the add overwrites the old sub; issuing a
+    # remove for A32/01 afterwards would nuke the just-set subscription.
+    current = [{"rx_device": "A32", "rx_channel": "01", "tx_device": "Inferno", "tx_channel": "R",
+                "state": "connected", "label": "Connected"}]
+    app, fake, store = _preset_app(tmp_path, current)
+    store.save("Repoint", [
+        {"rx_device": "A32", "rx_channel": "01", "tx_device": "Inferno", "tx_channel": "L"}
+    ])
+    client = _client(app)
+    resp = client.post("/api/presets/Repoint/apply")
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "added": 1, "removed": 0, "skipped": 0}
+    assert ("add", {"tx_device": "Inferno", "tx_number": 1,
+                    "rx_device": "A32", "rx_number": 1}) in fake.calls
+    assert ("remove", {"rx_device": "A32", "rx_number": 1}) not in fake.calls
+
+
 def test_apply_preset_skips_unresolvable(tmp_path):
     app, fake, store = _preset_app(tmp_path, [])
     store.save("Ghosts", [

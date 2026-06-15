@@ -109,6 +109,10 @@ def plan_apply(desired: list[dict], state: dict) -> tuple[list[dict], list[dict]
 
     add: list[dict] = []
     skipped = 0
+    # RX channels the desired routing subscribes (any TX). A Dante RX channel
+    # holds at most one subscription, so an add to such a channel OVERWRITES
+    # whatever was there — issuing a remove for it would nuke the just-added sub.
+    desired_rx: set[tuple[str, int]] = set()
     for sub in desired:
         rx_device = sub.get("rx_device", "")
         tx_device = sub.get("tx_device", "")
@@ -117,6 +121,7 @@ def plan_apply(desired: list[dict], state: dict) -> tuple[list[dict], list[dict]
         if rx_number is None or tx_number is None:
             skipped += 1
             continue
+        desired_rx.add((rx_device, rx_number))
         k = key(sub)
         desired_keys.add(k)
         if k not in current:
@@ -133,6 +138,8 @@ def plan_apply(desired: list[dict], state: dict) -> tuple[list[dict], list[dict]
         rx_number = rx_numbers.get(rx_device, {}).get(sub.get("rx_channel", ""))
         if rx_number is None:
             continue  # unresolvable RX label — can't issue a removal
+        if (rx_device, rx_number) in desired_rx:
+            continue  # re-pointed channel: the desired add overwrites it, no remove needed
         remove.append({"rx_device": rx_device, "rx_number": rx_number})
 
     return add, remove, skipped

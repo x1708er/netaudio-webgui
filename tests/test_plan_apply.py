@@ -69,11 +69,12 @@ def test_plan_apply_skips_unresolvable_channel():
 
 def test_plan_apply_changing_tx_is_an_add():
     # RX already subscribed to Inferno/L; desired wants the same RX from Inferno/R.
+    # Dante allows one subscription per RX channel, so the add OVERWRITES the old
+    # sub — no remove is emitted. (Emitting a remove for A32/01 would run after the
+    # add in apply_desired and delete the just-set subscription.)
     current = [{"rx_device": "A32", "rx_channel": "01", "tx_device": "Inferno", "tx_channel": "L"}]
     desired = [{"rx_device": "A32", "rx_channel": "01", "tx_device": "Inferno", "tx_channel": "R"}]
     add, remove, skipped = plan_apply(desired, _state(current))
     assert add == [{"tx_device": "Inferno", "tx_number": 2, "rx_device": "A32", "rx_number": 1}]
-    # The old (L) sub differs by key, so it would be removed too (Dante overwrites
-    # on add, but we report both for an exact diff).
-    assert remove == [{"rx_device": "A32", "rx_number": 1}]
+    assert remove == []
     assert skipped == 0
