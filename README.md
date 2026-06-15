@@ -83,11 +83,15 @@ scene to **all zones at once**, and each zone (and the master) can show an
 "Aus" button that clears its outputs. The currently-active button per zone is
 highlighted.
 
+![Touch dashboard](docs/screenshots/touch-dashboard.png)
+
 Configure zones with the in-GUI editor (⚙ in the dashboard): name a zone, pick
 its RX output channels, choose which saved scenes appear as its buttons, and set
 the master buttons. The config is stored in `zones.json` (override with
 `NETAUDIO_GUI_ZONES`). Scene buttons reference saved scenes, so create the scenes
 first (💾 Speichern in the matrix view).
+
+![Zone editor](docs/screenshots/zone-editor.png)
 
 ## Keeping the view fresh
 
