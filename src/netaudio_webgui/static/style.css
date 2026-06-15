@@ -934,7 +934,7 @@ aside#devices {
            text-transform: uppercase; color: var(--accent-2); }
 .zone-buttons { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
                 gap: 12px; }
-.zone-btn { min-height: 72px; font-size: 1.1rem; font: inherit; cursor: pointer;
+.zone-btn { min-height: 72px; font: inherit; font-size: 1.1rem; cursor: pointer;
             border: 1px solid var(--line); border-radius: var(--radius);
             background: var(--panel-2); color: inherit; padding: 8px; }
 .zone-btn.active { background: var(--accent, #2e7d32); color: #fff; border-color: var(--accent, #2e7d32); }
