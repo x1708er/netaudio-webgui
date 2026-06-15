@@ -13,6 +13,7 @@ from netaudio_webgui.auth import SessionStore, UserStore
 from netaudio_webgui.config import Settings, load_settings
 from netaudio_webgui.netaudio_client import NetaudioClient, NetaudioError
 from netaudio_webgui.presets import PresetStore
+from netaudio_webgui.zones import ZoneStore
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -64,6 +65,11 @@ class ChannelGainBody(BaseModel):
 class LoginBody(BaseModel):
     username: str
     password: str
+
+
+class ZoneConfigBody(BaseModel):
+    master: dict | None = None
+    zones: list[dict] | None = None
 
 
 def _coerce_bool(value) -> bool:
@@ -172,6 +178,37 @@ def apply_desired(client, desired: list[dict],
     return {"added": added, "removed": removed, "skipped": skipped}
 
 
+def _zone_scope(zone: dict) -> set[tuple[str, str]]:
+    return {(r["device"], r["channel"]) for r in zone.get("rx", [])}
+
+
+def _scene_slice(subs: list[dict], scope: set[tuple[str, str]]) -> set[tuple[str, str, str, str]]:
+    """The (rx_device, rx_channel, tx_device, tx_channel) tuples of ``subs`` whose
+    RX falls within ``scope``."""
+    return {
+        (s.get("rx_device", ""), s.get("rx_channel", ""),
+         s.get("tx_device", ""), s.get("tx_channel", ""))
+        for s in subs
+        if (s.get("rx_device", ""), s.get("rx_channel", "")) in scope
+    }
+
+
+def _active_button(buttons: list[str], current: set, store, scope: set,
+                   has_off: bool) -> str | None:
+    """Which button (scene name) matches ``current`` (live routing sliced to
+    ``scope``)? Prefer a non-empty scene match; else "off" when empty; else None."""
+    for name in buttons:
+        try:
+            sliced = _scene_slice(store.get(name), scope)
+        except (KeyError, ValueError):
+            continue
+        if sliced and sliced == current:
+            return name
+    if not current and has_off:
+        return "off"
+    return None
+
+
 def _make_client(settings: Settings):
     if settings.demo:
         from netaudio_webgui.fixtures import DemoClient
@@ -184,10 +221,11 @@ def _make_client(settings: Settings):
 
 
 def create_app(settings: Settings | None = None, client=None, store=None,
-               users: UserStore | None = None) -> FastAPI:
+               users: UserStore | None = None, zones: ZoneStore | None = None) -> FastAPI:
     settings = settings or load_settings()
     client = client or _make_client(settings)
     store = store or PresetStore(settings.presets_path)
+    zones = zones or ZoneStore(settings.zones_path)
     if users is None:
         if settings.demo:
             users = UserStore.from_plaintext({"demo": "demo"})
@@ -373,6 +411,77 @@ def create_app(settings: Settings | None = None, client=None, store=None,
     @app.get("/api/log", dependencies=auth)
     def api_log():
         return {"log": list(reversed(audit_log))}
+
+    def _find_zone(name: str) -> dict:
+        for z in zones.load()["zones"]:
+            if z["name"] == name:
+                return z
+        raise HTTPException(status_code=404, detail=f"zone {name!r} not found")
+
+    def _scene_for_scope(scene: str, scope: set[tuple[str, str]]) -> list[dict]:
+        try:
+            subs = store.get(scene)
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"scene {scene!r} not found")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        return [s for s in subs if (s.get("rx_device", ""), s.get("rx_channel", "")) in scope]
+
+    @app.get("/api/zones", dependencies=auth)
+    def api_zones_get():
+        return zones.load()
+
+    @app.put("/api/zones", dependencies=auth)
+    def api_zones_put(body: ZoneConfigBody):
+        try:
+            zones.save(body.model_dump(exclude_none=True))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        return {"ok": True}
+
+    @app.post("/api/zones/apply/{scene}", dependencies=auth)
+    def api_zones_master_apply(scene: str):
+        scope: set[tuple[str, str]] = set()
+        for z in zones.load()["zones"]:
+            scope |= _zone_scope(z)
+        desired = _scene_for_scope(scene, scope)
+        return {"ok": True, **apply_desired(client, desired, scope=scope)}
+
+    @app.post("/api/zones/off", dependencies=auth)
+    def api_zones_master_off():
+        scope: set[tuple[str, str]] = set()
+        for z in zones.load()["zones"]:
+            scope |= _zone_scope(z)
+        return {"ok": True, **apply_desired(client, [], scope=scope)}
+
+    @app.post("/api/zones/{zone}/apply/{scene}", dependencies=auth)
+    def api_zone_apply(zone: str, scene: str):
+        scope = _zone_scope(_find_zone(zone))
+        desired = _scene_for_scope(scene, scope)
+        return {"ok": True, **apply_desired(client, desired, scope=scope)}
+
+    @app.post("/api/zones/{zone}/off", dependencies=auth)
+    def api_zone_off(zone: str):
+        scope = _zone_scope(_find_zone(zone))
+        return {"ok": True, **apply_desired(client, [], scope=scope)}
+
+    @app.get("/api/zones/state", dependencies=auth)
+    def api_zones_state():
+        config = zones.load()
+        subs = client.get_state().get("subscriptions", [])
+        result: dict = {"zones": {}, "master": None}
+        master_scope: set[tuple[str, str]] = set()
+        for z in config["zones"]:
+            scope = _zone_scope(z)
+            master_scope |= scope
+            current = _scene_slice(subs, scope)
+            result["zones"][z["name"]] = _active_button(
+                z.get("buttons", []), current, store, scope, z.get("off", False))
+        master = config.get("master", {})
+        current = _scene_slice(subs, master_scope)
+        result["master"] = _active_button(
+            master.get("buttons", []), current, store, master_scope, master.get("off", False))
+        return result
 
     @app.get("/")
     def index():

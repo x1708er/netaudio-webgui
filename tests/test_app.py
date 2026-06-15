@@ -5,6 +5,7 @@ from netaudio_webgui.app import create_app
 from netaudio_webgui.auth import UserStore
 from netaudio_webgui.config import Settings
 from netaudio_webgui.presets import PresetStore
+from netaudio_webgui.zones import ZoneStore
 
 
 class FakeClient:
@@ -124,6 +125,22 @@ def _preset_app(tmp_path, subscriptions=None):
     users = UserStore.from_plaintext({"test": "test"})
     app = create_app(settings=settings, client=fake, store=store, users=users)
     return app, fake, store
+
+
+def _zone_app(tmp_path, subscriptions=None, zones_config=None, presets=None):
+    fake = FakeClient()
+    fake.state = _routing_state(subscriptions or [])
+    settings = Settings(bind="127.0.0.1", port=1, demo=False,
+                        netaudio_bin="netaudio", discovery_timeout=2.0)
+    store = PresetStore(tmp_path / "presets.json")
+    for name, subs in (presets or {}).items():
+        store.save(name, subs)
+    zones = ZoneStore(tmp_path / "zones.json")
+    if zones_config is not None:
+        zones.save(zones_config)
+    users = UserStore.from_plaintext({"test": "test"})
+    app = create_app(settings=settings, client=fake, store=store, users=users, zones=zones)
+    return app, fake, store, zones
 
 
 def test_state_endpoint_returns_state():
@@ -538,3 +555,84 @@ def test_create_app_without_users_fails_fast():
                         users_path="/nonexistent/users.json")
     with pytest.raises(RuntimeError):
         create_app(settings=settings, client=FakeClient())
+
+
+_L = {"rx_device": "A32", "rx_channel": "01", "tx_device": "Inferno", "tx_channel": "L"}
+_R = {"rx_device": "A32", "rx_channel": "01", "tx_device": "Inferno", "tx_channel": "R"}
+_ZONES = {
+    "master": {"buttons": ["L-Scene"], "off": True},
+    "zones": [{"name": "Saal", "rx": [{"device": "A32", "channel": "01"}],
+               "buttons": ["L-Scene", "R-Scene"], "off": True}],
+}
+
+
+def test_get_zones_returns_config(tmp_path):
+    app, _, _, _ = _zone_app(tmp_path, zones_config=_ZONES)
+    client = _client(app)
+    assert client.get("/api/zones").json() == _ZONES
+
+
+def test_put_zones_saves_and_validates(tmp_path):
+    app, _, _, zones = _zone_app(tmp_path)
+    client = _client(app)
+    assert client.put("/api/zones", json=_ZONES).status_code == 200
+    assert zones.load() == _ZONES
+    assert client.put("/api/zones", json={"zones": [{"name": ""}]}).status_code == 400
+
+
+def test_zone_apply_is_scoped(tmp_path):
+    app, fake, _, _ = _zone_app(tmp_path, subscriptions=[dict(_L, state="connected", label="x")],
+                                zones_config=_ZONES, presets={"R-Scene": [_R]})
+    client = _client(app)
+    resp = client.post("/api/zones/Saal/apply/R-Scene")
+    assert resp.status_code == 200
+    assert resp.json()["added"] == 1
+    assert resp.json()["removed"] == 0
+    assert ("add", {"tx_device": "Inferno", "tx_number": 2,
+                    "rx_device": "A32", "rx_number": 1}) in fake.calls
+
+
+def test_zone_off_clears_zone(tmp_path):
+    app, fake, _, _ = _zone_app(tmp_path, subscriptions=[dict(_L, state="connected", label="x")],
+                                zones_config=_ZONES)
+    client = _client(app)
+    resp = client.post("/api/zones/Saal/off")
+    assert resp.status_code == 200
+    assert ("remove", {"rx_device": "A32", "rx_number": 1}) in fake.calls
+
+
+def test_zone_apply_unknown_zone_404(tmp_path):
+    app, _, _, _ = _zone_app(tmp_path, zones_config=_ZONES, presets={"R-Scene": [_R]})
+    client = _client(app)
+    assert client.post("/api/zones/Ghost/apply/R-Scene").status_code == 404
+
+
+def test_zone_apply_unknown_scene_404(tmp_path):
+    app, _, _, _ = _zone_app(tmp_path, zones_config=_ZONES)
+    client = _client(app)
+    assert client.post("/api/zones/Saal/apply/Nope").status_code == 404
+
+
+def test_master_apply_scopes_all_zones(tmp_path):
+    app, fake, _, _ = _zone_app(tmp_path, zones_config=_ZONES, presets={"L-Scene": [_L]})
+    client = _client(app)
+    resp = client.post("/api/zones/apply/L-Scene")
+    assert resp.status_code == 200
+    assert ("add", {"tx_device": "Inferno", "tx_number": 1,
+                    "rx_device": "A32", "rx_number": 1}) in fake.calls
+
+
+def test_zones_state_reports_active_button(tmp_path):
+    app, _, _, _ = _zone_app(tmp_path, subscriptions=[dict(_L, state="connected", label="x")],
+                             zones_config=_ZONES, presets={"L-Scene": [_L], "R-Scene": [_R]})
+    client = _client(app)
+    body = client.get("/api/zones/state").json()
+    assert body["zones"]["Saal"] == "L-Scene"
+
+
+def test_zones_state_reports_off_when_empty(tmp_path):
+    app, _, _, _ = _zone_app(tmp_path, subscriptions=[], zones_config=_ZONES,
+                             presets={"L-Scene": [_L]})
+    client = _client(app)
+    body = client.get("/api/zones/state").json()
+    assert body["zones"]["Saal"] == "off"
