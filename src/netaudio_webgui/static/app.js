@@ -7,6 +7,8 @@ let mutationChain = Promise.resolve();  // serialize mutations (each triggers a 
 let filterQuery = "";            // live search filter (lower-cased), re-applied after every render
 const openSections = new Set();  // keys of expanded <details> (device + section), kept across re-renders
 let lastDevicesJson = null;      // signature of last-rendered device data — skip needless panel rebuilds
+let viewMode = "matrix";          // "matrix" | "dashboard"
+let zonesConfig = { master: { buttons: [], off: false }, zones: [] };
 
 function headers(extra) {
   return Object.assign({}, extra || {});
@@ -622,6 +624,7 @@ async function refresh() {
   }
   // else: empty poll but we have a good state (daemon restarting) — keep showing it.
   updateAge();
+  refreshZonesState();
 }
 
 async function rescan() {
@@ -812,6 +815,8 @@ document.getElementById("preset-save").onclick = savePreset;
 document.getElementById("preset-apply").onclick = applyPreset;
 document.getElementById("preset-delete").onclick = deletePreset;
 document.getElementById("export").onclick = exportMatrix;
+document.getElementById("view-toggle").onclick = () =>
+  setView(viewMode === "dashboard" ? "matrix" : "dashboard");
 document.getElementById("theme-toggle").onclick = toggleTheme;
 document.getElementById("help-toggle").onclick = () => toggleHelp();
 
@@ -918,6 +923,101 @@ document.getElementById("logout").onclick = async () => {
   try { await api("POST", "/api/logout"); } catch (_) {}
   showLogin();
 };
+
+// ---- touch dashboard -----------------------------------------------------
+function setView(mode) {
+  viewMode = mode;
+  document.querySelector("main").classList.toggle("hidden", mode === "dashboard");
+  document.getElementById("dashboard").classList.toggle("hidden", mode !== "dashboard");
+  document.getElementById("view-toggle").textContent =
+    mode === "dashboard" ? "▦ Matrix" : "🎛 Dashboard";
+  if (mode === "dashboard") loadDashboard();
+}
+
+async function loadDashboard() {
+  try {
+    zonesConfig = await api("GET", "/api/zones");
+  } catch (_) { return; }
+  renderDashboard();
+  refreshZonesState();
+}
+
+function renderDashboard() {
+  const root = document.getElementById("dashboard");
+  root.innerHTML = "";
+  const cfg = zonesConfig || { master: { buttons: [], off: false }, zones: [] };
+  const master = cfg.master || { buttons: [], off: false };
+  if ((master.buttons && master.buttons.length) || master.off) {
+    root.appendChild(zoneSection("Alle Zonen", master.buttons || [], master.off,
+      (s) => `/api/zones/apply/${encodeURIComponent(s)}`, `/api/zones/off`, "__master__"));
+  }
+  for (const z of cfg.zones || []) {
+    root.appendChild(zoneSection(z.name, z.buttons || [], z.off,
+      (s) => `/api/zones/${encodeURIComponent(z.name)}/apply/${encodeURIComponent(s)}`,
+      `/api/zones/${encodeURIComponent(z.name)}/off`, z.name));
+  }
+  if (!root.children.length) {
+    root.innerHTML = '<p class="dashboard-empty">Keine Zonen konfiguriert — über ⚙ den Editor öffnen.</p>';
+  }
+  // NOTE: the "⚙ Zonen bearbeiten" entry button is added in Task 6 (the editor
+  // task), once openZoneEditor() exists.
+}
+
+function zoneSection(title, buttons, hasOff, applyUrlFn, offUrl, zoneKey) {
+  const sec = document.createElement("section");
+  sec.className = "zone";
+  sec.dataset.zone = zoneKey;
+  const h = document.createElement("h2");
+  h.textContent = title;
+  sec.appendChild(h);
+  const grid = document.createElement("div");
+  grid.className = "zone-buttons";
+  for (const scene of buttons) {
+    const b = document.createElement("button");
+    b.className = "zone-btn";
+    b.dataset.scene = scene;
+    b.textContent = scene;
+    b.onclick = () => applyZone(applyUrlFn(scene), sec, b);
+    grid.appendChild(b);
+  }
+  if (hasOff) {
+    const off = document.createElement("button");
+    off.className = "zone-btn zone-off";
+    off.dataset.scene = "off";
+    off.textContent = "Aus";
+    off.onclick = () => applyZone(offUrl, sec, off);
+    grid.appendChild(off);
+  }
+  sec.appendChild(grid);
+  return sec;
+}
+
+function highlightActive(sec, activeScene) {
+  for (const b of sec.querySelectorAll(".zone-btn")) {
+    b.classList.toggle("active", b.dataset.scene === activeScene);
+  }
+}
+
+async function applyZone(url, sec, btn) {
+  highlightActive(sec, btn.dataset.scene);  // optimistic
+  try {
+    await api("POST", url);
+  } catch (e) { toast(e.message, "error"); }
+  refreshZonesState();
+  refresh();
+}
+
+async function refreshZonesState() {
+  if (viewMode !== "dashboard") return;
+  let state;
+  try { state = await api("GET", "/api/zones/state"); } catch (_) { return; }
+  const root = document.getElementById("dashboard");
+  for (const sec of root.querySelectorAll("section.zone")) {
+    const key = sec.dataset.zone;
+    const active = key === "__master__" ? state.master : (state.zones || {})[key];
+    highlightActive(sec, active);
+  }
+}
 
 boot();
 setInterval(updateAge, 1000);  // tick the "last updated" age even between polls
