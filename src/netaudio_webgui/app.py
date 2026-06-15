@@ -78,7 +78,8 @@ def _coerce_bool(value) -> bool:
     raise ValueError(f"invalid boolean: {value!r}")
 
 
-def plan_apply(desired: list[dict], state: dict) -> tuple[list[dict], list[dict], int]:
+def plan_apply(desired: list[dict], state: dict,
+               scope: set[tuple[str, str]] | None = None) -> tuple[list[dict], list[dict], int]:
     """Compute the diff to make the live routing EXACTLY match ``desired``.
 
     ``desired`` is a list of ``{rx_device, rx_channel, tx_device, tx_channel}``
@@ -88,6 +89,9 @@ def plan_apply(desired: list[dict], state: dict) -> tuple[list[dict], list[dict]
                  ``{tx_device, tx_number, rx_device, rx_number}``.
       * remove — current subs not in desired, as ``{rx_device, rx_number}``.
       * skipped — desired subs whose device/channel can't be resolved.
+      * scope — optional set of (rx_device, rx_channel) LABEL pairs. When given,
+                removals are limited to current subs whose RX is in scope; subs
+                outside the scope are never touched (used for zone-scoped apply).
     Identity is keyed on (rx_device, rx_channel, tx_device, tx_channel) labels;
     only one sub per RX channel is possible in Dante, so an add that changes the
     TX of an already-subscribed RX is simply an add (netaudio overwrites).
@@ -135,7 +139,10 @@ def plan_apply(desired: list[dict], state: dict) -> tuple[list[dict], list[dict]
         if k in desired_keys:
             continue
         rx_device = sub.get("rx_device", "")
-        rx_number = rx_numbers.get(rx_device, {}).get(sub.get("rx_channel", ""))
+        rx_label = sub.get("rx_channel", "")
+        if scope is not None and (rx_device, rx_label) not in scope:
+            continue  # out of zone scope — leave untouched
+        rx_number = rx_numbers.get(rx_device, {}).get(rx_label)
         if rx_number is None:
             continue  # unresolvable RX label — can't issue a removal
         if (rx_device, rx_number) in desired_rx:
@@ -145,14 +152,15 @@ def plan_apply(desired: list[dict], state: dict) -> tuple[list[dict], list[dict]
     return add, remove, skipped
 
 
-def apply_desired(client, desired: list[dict]) -> dict:
+def apply_desired(client, desired: list[dict],
+                  scope: set[tuple[str, str]] | None = None) -> dict:
     """Make the live routing EXACTLY match ``desired`` (label-keyed subs).
 
     Runs ``plan_apply`` against the current state, performs the add/remove
     client calls, and returns ``{"added", "removed", "skipped"}``. Shared by
     the preset-apply endpoint and the matrix import endpoint.
     """
-    add, remove, skipped = plan_apply(desired, client.get_state())
+    add, remove, skipped = plan_apply(desired, client.get_state(), scope=scope)
     added = 0
     for a in add:
         client.add_subscription(**a)

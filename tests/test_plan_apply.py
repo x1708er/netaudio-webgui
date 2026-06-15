@@ -78,3 +78,41 @@ def test_plan_apply_changing_tx_is_an_add():
     assert add == [{"tx_device": "Inferno", "tx_number": 2, "rx_device": "A32", "rx_number": 1}]
     assert remove == []
     assert skipped == 0
+
+
+def test_plan_apply_scope_limits_removals():
+    # Two current subs on different RX channels. Scope only covers A32/01, so the
+    # extra sub on A32/02 must NOT be removed (out of scope).
+    current = [
+        {"rx_device": "A32", "rx_channel": "01", "tx_device": "Inferno", "tx_channel": "L"},
+        {"rx_device": "A32", "rx_channel": "02", "tx_device": "Inferno", "tx_channel": "R"},
+    ]
+    # Desired (scoped to A32/01): A32/01 <- Inferno/R.
+    desired = [{"rx_device": "A32", "rx_channel": "01", "tx_device": "Inferno", "tx_channel": "R"}]
+    scope = {("A32", "01")}
+    add, remove, skipped = plan_apply(desired, _state(current), scope=scope)
+    assert add == [{"tx_device": "Inferno", "tx_number": 2, "rx_device": "A32", "rx_number": 1}]
+    assert remove == []          # A32/01 is re-pointed (add overwrites); A32/02 is out of scope
+    assert skipped == 0
+
+
+def test_plan_apply_scope_clears_in_scope_channel():
+    # Empty desired scoped to A32/01 clears only A32/01, leaving A32/02 alone.
+    current = [
+        {"rx_device": "A32", "rx_channel": "01", "tx_device": "Inferno", "tx_channel": "L"},
+        {"rx_device": "A32", "rx_channel": "02", "tx_device": "Inferno", "tx_channel": "R"},
+    ]
+    add, remove, skipped = plan_apply([], _state(current), scope={("A32", "01")})
+    assert add == []
+    assert remove == [{"rx_device": "A32", "rx_number": 1}]
+    assert skipped == 0
+
+
+def test_plan_apply_scope_none_is_unchanged():
+    # Without scope, behaviour is the full-matrix diff (existing semantics).
+    current = [{"rx_device": "A32", "rx_channel": "02", "tx_device": "Inferno", "tx_channel": "R"}]
+    desired = [{"rx_device": "A32", "rx_channel": "01", "tx_device": "Inferno", "tx_channel": "L"}]
+    add, remove, skipped = plan_apply(desired, _state(current))
+    assert add == [{"tx_device": "Inferno", "tx_number": 1, "rx_device": "A32", "rx_number": 1}]
+    assert remove == [{"rx_device": "A32", "rx_number": 2}]
+    assert skipped == 0
