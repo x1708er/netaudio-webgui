@@ -12,7 +12,6 @@ def _truthy(value: str | None) -> bool:
 class Settings:
     bind: str
     port: int
-    token: str | None
     demo: bool
     netaudio_bin: str
     discovery_timeout: float
@@ -25,14 +24,15 @@ class Settings:
     restart_on_change: bool = False
     # Where named routing scenes (presets) are persisted.
     presets_path: str = "~/.config/netaudio-webgui/presets.json"
+    # Where login users are stored (username -> scrypt hash; plaintext entries
+    # are hashed on first load and written back).
+    users_path: str = "~/.config/netaudio-webgui/users.json"
 
 
 def load_settings() -> Settings:
-    token = os.environ.get("NETAUDIO_GUI_TOKEN") or None
     return Settings(
         bind=os.environ.get("NETAUDIO_GUI_BIND", "0.0.0.0"),
         port=int(os.environ.get("NETAUDIO_GUI_PORT", "36342")),
-        token=token,
         demo=_truthy(os.environ.get("NETAUDIO_GUI_DEMO")),
         netaudio_bin=os.environ.get("NETAUDIO_BIN", "netaudio"),
         discovery_timeout=float(os.environ.get("NETAUDIO_GUI_TIMEOUT", "2.0")),
@@ -41,4 +41,6 @@ def load_settings() -> Settings:
         restart_on_change=_truthy(os.environ.get("NETAUDIO_GUI_RESTART_ON_CHANGE", "0")),
         presets_path=os.environ.get("NETAUDIO_GUI_PRESETS")
         or os.path.expanduser("~/.config/netaudio-webgui/presets.json"),
+        users_path=os.environ.get("NETAUDIO_GUI_USERS")
+        or os.path.expanduser("~/.config/netaudio-webgui/users.json"),
     )

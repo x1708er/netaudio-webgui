@@ -1,4 +1,3 @@
-const TOKEN = new URLSearchParams(location.search).get("token");
 const POLL_MS = 3000;
 let pollTimer = null;
 let lastState = null;            // last rendered state (for instant re-render)
@@ -10,15 +9,17 @@ const openSections = new Set();  // keys of expanded <details> (device + section
 let lastDevicesJson = null;      // signature of last-rendered device data — skip needless panel rebuilds
 
 function headers(extra) {
-  const h = Object.assign({}, extra || {});
-  if (TOKEN) h["Authorization"] = "Bearer " + TOKEN;
-  return h;
+  return Object.assign({}, extra || {});
 }
 
 async function api(method, path, body) {
   const opts = { method, headers: headers(body ? {"Content-Type": "application/json"} : {}) };
   if (body) opts.body = JSON.stringify(body);
   const resp = await fetch(path, opts);
+  if (resp.status === 401) {
+    showLogin();
+    throw new Error("nicht angemeldet");
+  }
   if (!resp.ok) {
     let detail = resp.statusText;
     try { detail = (await resp.json()).detail || detail; } catch (_) {}
@@ -850,7 +851,73 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "?") { e.preventDefault(); toggleHelp(); }
 });
 
-refresh();
-loadPresets();
-pollTimer = setInterval(refresh, POLL_MS);
+// ---- authentication ------------------------------------------------------
+function showLogin() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  document.getElementById("logout").hidden = true;
+  const overlay = document.getElementById("login-overlay");
+  const wasHidden = overlay.classList.contains("hidden");
+  overlay.classList.remove("hidden");
+  // Only steal focus / reset the error when the overlay was previously hidden
+  // (i.e. a real "please log in"). A failed-login 401 re-enters here with the
+  // overlay already visible — don't yank focus off the password field, and let
+  // the submit handler's catch show the error.
+  if (wasHidden) {
+    document.getElementById("login-error").classList.add("hidden");
+    document.getElementById("login-user").focus();
+  }
+}
+
+function hideLogin() {
+  document.getElementById("login-overlay").classList.add("hidden");
+}
+
+function setUser(username) {
+  const btn = document.getElementById("logout");
+  btn.textContent = "⎋ " + username;
+  btn.hidden = false;
+}
+
+function startApp() {
+  hideLogin();
+  if (!pollTimer) {
+    refresh();
+    loadPresets();
+    pollTimer = setInterval(refresh, POLL_MS);
+  }
+}
+
+async function boot() {
+  let me;
+  try {
+    me = await api("GET", "/api/me");  // 401 -> api() shows the login overlay
+  } catch (_) {
+    return;
+  }
+  setUser(me.username);
+  startApp();
+}
+
+document.getElementById("login-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const err = document.getElementById("login-error");
+  const username = document.getElementById("login-user").value;
+  const password = document.getElementById("login-pass").value;
+  try {
+    const me = await api("POST", "/api/login", { username, password });
+    err.classList.add("hidden");
+    document.getElementById("login-pass").value = "";
+    setUser(me.username);
+    startApp();
+  } catch (_) {
+    err.classList.remove("hidden");
+  }
+});
+
+document.getElementById("logout").onclick = async () => {
+  try { await api("POST", "/api/logout"); } catch (_) {}
+  showLogin();
+};
+
+boot();
 setInterval(updateAge, 1000);  // tick the "last updated" age even between polls

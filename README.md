@@ -6,6 +6,12 @@ Browser-based Dante routing matrix + device management on top of the `netaudio` 
 > expect bugs, rough edges, and breaking changes. Not yet recommended for
 > production / live use.
 
+## Screenshots
+
+| Login | Dashboard |
+|---|---|
+| ![Login](docs/screenshots/login.png) | ![Dashboard](docs/screenshots/dashboard.png) |
+
 ## Features
 
 - **Routing matrix** — click a cell to subscribe/unsubscribe; optimistic updates,
@@ -41,13 +47,30 @@ Open http://<this-host>:36342/ from any device on the LAN.
 |---|---|---|
 | `NETAUDIO_GUI_BIND` | `0.0.0.0` | bind address |
 | `NETAUDIO_GUI_PORT` | `36342` | port |
-| `NETAUDIO_GUI_TOKEN` | (unset) | if set, all `/api/*` require `Authorization: Bearer <token>`; append `?token=<token>` to the URL |
+| `NETAUDIO_GUI_USERS` | `~/.config/netaudio-webgui/users.json` | login users; JSON map `{"name": "password"}` — plaintext entries are hashed (scrypt) on first start and written back |
 | `NETAUDIO_GUI_DEMO` | `0` | serve in-memory demo data |
 | `NETAUDIO_BIN` | `netaudio` | path to the netaudio binary |
 | `NETAUDIO_GUI_TIMEOUT` | `2.0` | mDNS scan timeout when the daemon is not running |
 | `NETAUDIO_RELAY_HOST` | `127.0.0.1` | netaudio daemon relay host (for forced cache refresh) |
 | `NETAUDIO_RELAY_PORT` | `9000` | netaudio daemon relay port |
 | `NETAUDIO_GUI_PRESETS` | `~/.config/netaudio-webgui/presets.json` | where named routing scenes are stored |
+
+## Authentication
+
+Login is required. Create the users file (default
+`~/.config/netaudio-webgui/users.json`, override with `NETAUDIO_GUI_USERS`) as a
+JSON map of username to password:
+
+    { "alex": "choose-a-password" }
+
+On first start each plaintext password is hashed with scrypt and written back to
+the file, so the file then contains only hashes. Open the GUI and log in through
+the in-browser form; the session is held in an HttpOnly cookie for 30 days.
+
+> The server speaks plain HTTP (no TLS) — intended for a trusted LAN. Passwords
+> are sent in the clear over the network on login. If the users file is missing
+> or empty, the server refuses to start. Demo mode (`NETAUDIO_GUI_DEMO=1`) seeds
+> a throwaway `demo` / `demo` user and writes nothing to disk.
 
 ## Keeping the view fresh
 

@@ -31,6 +31,7 @@
     <input id="import-file" type="file" accept="application/json" hidden>
     <button id="disconnect-all" class="danger" title="Alle aktiven Abos trennen">Alle trennen</button>
     <button id="rescan" title="Geräte & Abos neu vom Daemon einlesen (für Änderungen außerhalb der GUI)">↻ Neu einlesen</button>
+    <button id="logout" title="Abmelden" hidden></button>
     <button id="theme-toggle" title="Theme umschalten (hell/dunkel)">🌙</button>
     <button id="help-toggle" title="Tastenkürzel anzeigen ( ? )">?</button>
     <button id="refresh" title="Ansicht aktualisieren">⟳</button>
@@ -69,6 +70,19 @@
     </div>
   </div>
   <div id="toasts"></div>
+  <div id="login-overlay" class="overlay">
+    <form id="login-form" class="overlay-panel login-panel">
+      <h2>Anmelden</h2>
+      <label>Benutzer
+        <input id="login-user" type="text" name="username" autocomplete="username" autofocus>
+      </label>
+      <label>Passwort
+        <input id="login-pass" type="password" name="password" autocomplete="current-password">
+      </label>
+      <div id="login-error" class="login-error hidden">Anmeldung fehlgeschlagen</div>
+      <button type="submit">Anmelden</button>
+    </form>
+  </div>
   <script src="/static/app.js"></script>
 </body>
 </html>

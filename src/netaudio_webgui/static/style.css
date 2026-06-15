@@ -916,3 +916,11 @@ aside#devices {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Login overlay */
+.login-panel { display: flex; flex-direction: column; gap: 0.75rem; min-width: 16rem; }
+.login-panel label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.9rem; }
+.login-panel input { padding: 0.4rem 0.5rem; font: inherit; }
+.login-panel button[type="submit"] { padding: 0.45rem; font: inherit; cursor: pointer; }
+.login-error { color: #c0392b; font-size: 0.85rem; }
+#logout { cursor: pointer; }

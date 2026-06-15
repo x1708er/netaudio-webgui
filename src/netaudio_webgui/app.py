@@ -4,11 +4,12 @@ import time
 from collections import deque
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from netaudio_webgui.auth import SessionStore, UserStore
 from netaudio_webgui.config import Settings, load_settings
 from netaudio_webgui.netaudio_client import NetaudioClient, NetaudioError
 from netaudio_webgui.presets import PresetStore
@@ -58,6 +59,11 @@ class ConfigValueBody(BaseModel):
 class ChannelGainBody(BaseModel):
     level: int
     type: str  # "tx" | "rx"
+
+
+class LoginBody(BaseModel):
+    username: str
+    password: str
 
 
 def _coerce_bool(value) -> bool:
@@ -162,20 +168,53 @@ def _make_client(settings: Settings):
     )
 
 
-def create_app(settings: Settings | None = None, client=None, store=None) -> FastAPI:
+def create_app(settings: Settings | None = None, client=None, store=None,
+               users: UserStore | None = None) -> FastAPI:
     settings = settings or load_settings()
     client = client or _make_client(settings)
     store = store or PresetStore(settings.presets_path)
+    if users is None:
+        if settings.demo:
+            users = UserStore.from_plaintext({"demo": "demo"})
+        else:
+            users = UserStore.load(settings.users_path)
+    if not users.usernames():
+        raise RuntimeError(
+            f"no users configured — create {settings.users_path} with "
+            '{"<name>": "<password>"} entries (plaintext is hashed on first start)'
+        )
+    sessions = SessionStore()
     app = FastAPI(title="netaudio Web GUI")
 
-    def require_token(authorization: str | None = Header(default=None)) -> None:
-        if not settings.token:
-            return
-        expected = f"Bearer {settings.token}"
-        if authorization != expected:
-            raise HTTPException(status_code=401, detail="missing or invalid token")
+    SESSION_COOKIE = "netaudio_session"
 
-    auth = [Depends(require_token)]
+    def require_session(request: Request) -> None:
+        if sessions.get(request.cookies.get(SESSION_COOKIE)) is None:
+            raise HTTPException(status_code=401, detail="not authenticated")
+
+    auth = [Depends(require_session)]
+
+    @app.post("/api/login")
+    def api_login(body: LoginBody, response: Response):
+        if not users.verify(body.username, body.password):
+            raise HTTPException(status_code=401, detail="invalid credentials")
+        token = sessions.create(body.username)
+        response.set_cookie(
+            SESSION_COOKIE, token, httponly=True, samesite="lax",
+            max_age=30 * 24 * 3600, path="/",
+        )
+        return {"username": body.username}
+
+    @app.post("/api/logout")
+    def api_logout(request: Request, response: Response):
+        sessions.delete(request.cookies.get(SESSION_COOKIE))
+        response.delete_cookie(SESSION_COOKIE, path="/")
+        return {"ok": True}
+
+    @app.get("/api/me", dependencies=auth)
+    def api_me(request: Request):
+        session = sessions.get(request.cookies.get(SESSION_COOKIE))
+        return {"username": session["username"]}
 
     # In-memory session audit log of mutating requests (bounded ring buffer).
     audit_log: deque[dict] = deque(maxlen=200)
@@ -328,4 +367,18 @@ def create_app(settings: Settings | None = None, client=None, store=None) -> Fas
     return app
 
 
-app = create_app()
+# Build the app lazily on attribute access. Importing this module (e.g. tests,
+# which call create_app() directly with injected users) then needs no configured
+# users.json. Running it for real — `uvicorn netaudio_webgui.app:app` — accesses
+# `app`, which builds it and fails fast with a clear RuntimeError if no users are
+# configured.
+_app_instance = None
+
+
+def __getattr__(name: str):
+    if name == "app":
+        global _app_instance
+        if _app_instance is None:
+            _app_instance = create_app()
+        return _app_instance
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
