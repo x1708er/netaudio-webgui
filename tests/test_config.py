@@ -41,3 +41,10 @@ def test_overrides(monkeypatch):
     s = load_settings()
     assert s.port == 9000
     assert s.demo is True
+
+
+def test_zones_path_default_and_override(monkeypatch):
+    monkeypatch.delenv("NETAUDIO_GUI_ZONES", raising=False)
+    assert load_settings().zones_path.endswith("netaudio-webgui/zones.json")
+    monkeypatch.setenv("NETAUDIO_GUI_ZONES", "/tmp/zones.json")
+    assert load_settings().zones_path == "/tmp/zones.json"

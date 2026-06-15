@@ -27,6 +27,8 @@ class Settings:
     # Where login users are stored (username -> scrypt hash; plaintext entries
     # are hashed on first load and written back).
     users_path: str = "~/.config/netaudio-webgui/users.json"
+    # Where touch-dashboard zone config is persisted.
+    zones_path: str = "~/.config/netaudio-webgui/zones.json"
 
 
 def load_settings() -> Settings:
@@ -43,4 +45,6 @@ def load_settings() -> Settings:
         or os.path.expanduser("~/.config/netaudio-webgui/presets.json"),
         users_path=os.environ.get("NETAUDIO_GUI_USERS")
         or os.path.expanduser("~/.config/netaudio-webgui/users.json"),
+        zones_path=os.environ.get("NETAUDIO_GUI_ZONES")
+        or os.path.expanduser("~/.config/netaudio-webgui/zones.json"),
     )
