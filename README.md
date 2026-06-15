@@ -54,6 +54,7 @@ Open http://<this-host>:36342/ from any device on the LAN.
 | `NETAUDIO_RELAY_HOST` | `127.0.0.1` | netaudio daemon relay host (for forced cache refresh) |
 | `NETAUDIO_RELAY_PORT` | `9000` | netaudio daemon relay port |
 | `NETAUDIO_GUI_PRESETS` | `~/.config/netaudio-webgui/presets.json` | where named routing scenes are stored |
+| `NETAUDIO_GUI_ZONES` | `~/.config/netaudio-webgui/zones.json` | touch-dashboard zone config (managed via the in-GUI editor) |
 
 ## Authentication
 
@@ -71,6 +72,22 @@ the in-browser form; the session is held in an HttpOnly cookie for 30 days.
 > are sent in the clear over the network on login. If the users file is missing
 > or empty, the server refuses to start. Demo mode (`NETAUDIO_GUI_DEMO=1`) seeds
 > a throwaway `demo` / `demo` user and writes nothing to disk.
+
+## Touch dashboard (zones)
+
+Toggle the **🎛 Dashboard** button in the header for a touch-optimized operator
+view. The dashboard is organised into **zones** (output areas). Each zone shows
+large buttons for saved scenes; tapping one applies that scene **scoped to the
+zone's outputs only**, leaving other zones untouched. A master row applies a
+scene to **all zones at once**, and each zone (and the master) can show an
+"Aus" button that clears its outputs. The currently-active button per zone is
+highlighted.
+
+Configure zones with the in-GUI editor (⚙ in the dashboard): name a zone, pick
+its RX output channels, choose which saved scenes appear as its buttons, and set
+the master buttons. The config is stored in `zones.json` (override with
+`NETAUDIO_GUI_ZONES`). Scene buttons reference saved scenes, so create the scenes
+first (💾 Speichern in the matrix view).
 
 ## Keeping the view fresh
 
