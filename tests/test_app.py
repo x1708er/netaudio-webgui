@@ -636,3 +636,21 @@ def test_zones_state_reports_off_when_empty(tmp_path):
     client = _client(app)
     body = client.get("/api/zones/state").json()
     assert body["zones"]["Saal"] == "off"
+
+
+def test_master_off_clears_all_zones(tmp_path):
+    app, fake, _, _ = _zone_app(tmp_path, subscriptions=[dict(_L, state="connected", label="x")],
+                                zones_config=_ZONES)
+    client = _client(app)
+    resp = client.post("/api/zones/off")
+    assert resp.status_code == 200
+    assert ("remove", {"rx_device": "A32", "rx_number": 1}) in fake.calls
+
+
+def test_zones_state_reports_master_active(tmp_path):
+    # Master button "L-Scene" matches the union routing (only A32/01 <- Inferno/L).
+    app, _, _, _ = _zone_app(tmp_path, subscriptions=[dict(_L, state="connected", label="x")],
+                             zones_config=_ZONES, presets={"L-Scene": [_L]})
+    client = _client(app)
+    body = client.get("/api/zones/state").json()
+    assert body["master"] == "L-Scene"

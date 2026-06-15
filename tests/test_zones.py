@@ -77,3 +77,10 @@ def test_save_allows_null_master_and_rx(tmp_path):
     loaded = store.load()
     assert loaded["master"] == {"buttons": [], "off": False}
     assert loaded["zones"][0]["rx"] == []
+
+
+@pytest.mark.parametrize("bad", ["apply", "off", "state", "APPLY", "Off"])
+def test_save_rejects_reserved_zone_names(tmp_path, bad):
+    store = ZoneStore(tmp_path / "zones.json")
+    with pytest.raises(ValueError):
+        store.save({"zones": [{"name": bad, "rx": []}]})

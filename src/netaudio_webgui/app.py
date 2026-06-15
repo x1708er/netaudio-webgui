@@ -433,6 +433,8 @@ def create_app(settings: Settings | None = None, client=None, store=None,
 
     @app.put("/api/zones", dependencies=auth)
     def api_zones_put(body: ZoneConfigBody):
+        """Replace the WHOLE zone config (not a partial merge); omitted master or
+        zones reset to their empty default."""
         try:
             zones.save(body.model_dump(exclude_none=True))
         except ValueError as exc:

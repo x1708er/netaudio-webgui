@@ -81,6 +81,8 @@ class ZoneStore:
             name = (z.get("name") or "").strip()
             if not name:
                 raise ValueError("zone name must not be empty")
+            if name.lower() in {"apply", "off", "state"}:
+                raise ValueError(f"reserved zone name: {name}")
             if name in seen:
                 raise ValueError(f"duplicate zone name: {name}")
             seen.add(name)
