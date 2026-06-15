@@ -846,6 +846,7 @@ document.addEventListener("keydown", (e) => {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
   if (e.key === "Escape") {
     toggleHelp(false);
+    document.getElementById("zone-editor").classList.add("hidden");
     if (document.activeElement === searchInput) searchInput.blur();
     return;
   }
@@ -959,8 +960,11 @@ function renderDashboard() {
   if (!root.children.length) {
     root.innerHTML = '<p class="dashboard-empty">Keine Zonen konfiguriert — über ⚙ den Editor öffnen.</p>';
   }
-  // NOTE: the "⚙ Zonen bearbeiten" entry button is added in Task 6 (the editor
-  // task), once openZoneEditor() exists.
+  const gear = document.createElement("button");
+  gear.className = "zone-editor-open";
+  gear.textContent = "⚙ Zonen bearbeiten";
+  gear.onclick = openZoneEditor;
+  root.appendChild(gear);
 }
 
 function zoneSection(title, buttons, hasOff, applyUrlFn, offUrl, zoneKey) {
@@ -1018,6 +1022,149 @@ async function refreshZonesState() {
     highlightActive(sec, active);
   }
 }
+
+// ---- zone editor ---------------------------------------------------------
+let editorModel = null;   // working copy of the zones config while editing
+
+async function openZoneEditor() {
+  let state = lastState, presets = [];
+  try {
+    if (!state) state = await api("GET", "/api/state");
+    presets = (await api("GET", "/api/presets")).presets || [];
+    editorModel = JSON.parse(JSON.stringify(await api("GET", "/api/zones")));
+  } catch (e) { toast(e.message, "error"); return; }
+  editorModel._rxChoices = [];
+  for (const d of state.devices || []) {
+    for (const c of d.rx_channels || []) {
+      editorModel._rxChoices.push({ device: d.name, channel: c.label });
+    }
+  }
+  editorModel._sceneChoices = presets;
+  renderEditor();
+  document.getElementById("zone-editor").classList.remove("hidden");
+}
+
+function closeZoneEditor() {
+  document.getElementById("zone-editor").classList.add("hidden");
+  editorModel = null;
+}
+
+function renderEditor() {
+  const m = editorModel;
+  const masterEl = document.getElementById("editor-master");
+  masterEl.innerHTML = "<h3>Alle Zonen (Master)</h3>";
+  masterEl.appendChild(sceneChecklist(m.master.buttons, m._sceneChoices,
+    (sel) => { m.master.buttons = sel; }));
+  masterEl.appendChild(offToggle(m.master.off, (v) => { m.master.off = v; }));
+
+  const zonesEl = document.getElementById("editor-zones");
+  zonesEl.innerHTML = "";
+  m.zones.forEach((zone, idx) => {
+    const card = document.createElement("div");
+    card.className = "editor-zone";
+    const name = document.createElement("input");
+    name.className = "editor-zone-name";
+    name.value = zone.name;
+    name.placeholder = "Zonenname";
+    name.oninput = () => { zone.name = name.value; };
+    const del = document.createElement("button");
+    del.className = "editor-zone-del danger";
+    del.textContent = "🗑";
+    del.onclick = () => { m.zones.splice(idx, 1); renderEditor(); };
+    const head = document.createElement("div");
+    head.className = "editor-zone-head";
+    head.append(name, del);
+    card.appendChild(head);
+
+    card.appendChild(label("RX-Ausgänge"));
+    card.appendChild(rxChecklist(zone.rx, m._rxChoices, (sel) => { zone.rx = sel; }));
+    card.appendChild(label("Szenen-Buttons"));
+    card.appendChild(sceneChecklist(zone.buttons, m._sceneChoices, (sel) => { zone.buttons = sel; }));
+    card.appendChild(offToggle(zone.off, (v) => { zone.off = v; }));
+    zonesEl.appendChild(card);
+  });
+}
+
+function label(text) {
+  const el = document.createElement("div");
+  el.className = "editor-label";
+  el.textContent = text;
+  return el;
+}
+
+function offToggle(checked, onChange) {
+  const wrap = document.createElement("label");
+  wrap.className = "editor-off";
+  const cb = document.createElement("input");
+  cb.type = "checkbox";
+  cb.checked = !!checked;
+  cb.onchange = () => onChange(cb.checked);
+  wrap.append(cb, document.createTextNode(' „Aus"-Button anzeigen'));
+  return wrap;
+}
+
+function sceneChecklist(selected, choices, onChange) {
+  const set = new Set(selected);
+  const box = document.createElement("div");
+  box.className = "editor-checklist";
+  for (const name of choices) {
+    const lab = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = set.has(name);
+    cb.onchange = () => {
+      cb.checked ? set.add(name) : set.delete(name);
+      onChange(choices.filter((c) => set.has(c)));
+    };
+    lab.append(cb, document.createTextNode(" " + name));
+    box.appendChild(lab);
+  }
+  if (!choices.length) box.textContent = "(keine Szenen gespeichert)";
+  return box;
+}
+
+function rxChecklist(selected, choices, onChange) {
+  const key = (r) => r.device + "" + r.channel;
+  const set = new Set(selected.map(key));
+  const box = document.createElement("div");
+  box.className = "editor-checklist";
+  for (const r of choices) {
+    const lab = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = set.has(key(r));
+    cb.onchange = () => {
+      cb.checked ? set.add(key(r)) : set.delete(key(r));
+      onChange(choices.filter((c) => set.has(key(c))).map((c) => ({ device: c.device, channel: c.channel })));
+    };
+    lab.append(cb, document.createTextNode(` ${r.device} / ${r.channel}`));
+    box.appendChild(lab);
+  }
+  if (!choices.length) box.textContent = "(keine Geräte gefunden)";
+  return box;
+}
+
+async function saveZoneEditor() {
+  const payload = {
+    master: { buttons: editorModel.master.buttons || [], off: !!editorModel.master.off },
+    zones: (editorModel.zones || []).map((z) => ({
+      name: z.name, rx: z.rx || [], buttons: z.buttons || [], off: !!z.off,
+    })),
+  };
+  try {
+    await api("PUT", "/api/zones", payload);
+  } catch (e) { toast(e.message, "error"); return; }
+  closeZoneEditor();
+  toast("Zonen gespeichert", "ok");
+  loadDashboard();
+}
+
+document.getElementById("editor-add-zone").onclick = () => {
+  editorModel.zones.push({ name: "Neue Zone", rx: [], buttons: [], off: true });
+  renderEditor();
+};
+document.getElementById("editor-cancel").onclick = closeZoneEditor;
+document.getElementById("editor-save").onclick = saveZoneEditor;
 
 boot();
 setInterval(updateAge, 1000);  // tick the "last updated" age even between polls

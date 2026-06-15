@@ -940,3 +940,17 @@ aside#devices {
 .zone-btn.active { background: var(--accent, #2e7d32); color: #fff; border-color: var(--accent, #2e7d32); }
 .zone-btn.zone-off { opacity: 0.85; }
 .zone-editor-open { align-self: flex-start; padding: 8px 12px; font: inherit; cursor: pointer; }
+
+/* Zone editor */
+.editor-panel { width: min(680px, 92vw); max-height: 86vh; overflow: auto; }
+.editor-panel h3 { margin: 14px 0 6px; font-size: 0.95rem; }
+.editor-label { font-size: 0.8rem; color: var(--accent-2); margin: 8px 0 4px; letter-spacing: 1px; }
+.editor-checklist { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.editor-checklist label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.9rem; }
+.editor-zone { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; margin: 10px 0; }
+.editor-zone-head { display: flex; gap: 8px; align-items: center; }
+.editor-zone-name { flex: 1; padding: 6px 8px; font: inherit; }
+.editor-off { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 0.9rem; }
+.editor-actions { display: flex; gap: 8px; align-items: center; margin-top: 14px; }
+.editor-actions .editor-spacer { flex: 1; }
+.editor-actions button { padding: 8px 14px; font: inherit; cursor: pointer; }
