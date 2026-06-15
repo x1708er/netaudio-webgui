@@ -59,7 +59,9 @@ class ZoneStore:
     def normalize(data: dict) -> dict:
         if not isinstance(data, dict):
             raise ValueError("config must be an object")
-        master_in = data.get("master") or {}
+        master_in = data.get("master")
+        if master_in is None:
+            master_in = {}
         if not isinstance(master_in, dict):
             raise ValueError("master must be an object")
         master = {"buttons": _str_list(master_in.get("buttons")),
@@ -82,8 +84,13 @@ class ZoneStore:
             if name in seen:
                 raise ValueError(f"duplicate zone name: {name}")
             seen.add(name)
+            rx_in = z.get("rx")
+            if rx_in is None:
+                rx_in = []
+            if not isinstance(rx_in, list):
+                raise ValueError("rx must be a list")
             rx: list[dict] = []
-            for r in (z.get("rx") or []):
+            for r in rx_in:
                 if not isinstance(r, dict):
                     raise ValueError("rx entry must be an object")
                 device = (r.get("device") or "").strip()

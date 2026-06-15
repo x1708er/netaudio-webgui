@@ -56,3 +56,24 @@ def test_load_corrupt_file_is_empty(tmp_path):
     path = tmp_path / "zones.json"
     path.write_text("not json", encoding="utf-8")
     assert ZoneStore(path).load() == {"master": {"buttons": [], "off": False}, "zones": []}
+
+
+def test_save_rejects_non_dict_master(tmp_path):
+    store = ZoneStore(tmp_path / "zones.json")
+    with pytest.raises(ValueError):
+        store.save({"master": False, "zones": []})
+
+
+def test_save_rejects_non_list_rx(tmp_path):
+    store = ZoneStore(tmp_path / "zones.json")
+    with pytest.raises(ValueError):
+        store.save({"zones": [{"name": "Saal", "rx": 0}]})
+
+
+def test_save_allows_null_master_and_rx(tmp_path):
+    # null/missing master and rx are fine — they default.
+    store = ZoneStore(tmp_path / "zones.json")
+    store.save({"master": None, "zones": [{"name": "Saal", "rx": None}]})
+    loaded = store.load()
+    assert loaded["master"] == {"buttons": [], "off": False}
+    assert loaded["zones"][0]["rx"] == []
